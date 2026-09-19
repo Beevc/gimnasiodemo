@@ -11,6 +11,7 @@ let socioId = null;      // id del socio logueado
 let socio = null;        // copia fresca de sus datos
 let vistaActual = 'inicio';
 let chartPeso = null;    // instancia de Chart.js (avances)
+let _selHora = null;     // bloque elegido en Reservar (antes de confirmar)
 
 // Los bloques horarios y sus cupos se toman de Horarios (configurados por el admin).
 
@@ -48,36 +49,95 @@ async function recargarSocio() {
 }
 
 // ---------- Login / sesión ----------
+// Usuario = correo del socio. Primer ingreso con clave genérica (Cuentas.CLAVE_GENERICA)
+// → elige su contraseña. Luego entra con la suya. No puede cambiarla (solo el admin resetea).
+let _todos = [];            // socios cargados (para buscar por correo)
+let _pendingSetId = null;   // socio que está eligiendo su clave (primer ingreso)
+let _onboarding = false;    // true = primer ingreso, debe completar su ficha antes de usar el portal
+
 document.addEventListener('DOMContentLoaded', async () => {
-    const sel = $('login-cliente');
-    const todos = await Api.getClientes();
-    // Orden: primero activos, para que la demo abra "lindo"
-    sel.innerHTML = todos.map(c => {
-        const activo = Acceso.planActivo(c);
-        const etq = activo ? 'activo' : (c.estado === 'Congelado' ? 'congelado' : 'vencido');
-        return `<option value="${c.id}">${esc(c.nombre)} ${esc(c.apellido)} · plan ${etq}</option>`;
-    }).join('');
-    // Preselecciona un socio activo con datos ricos (Matías) si está.
-    if (todos.some(c => c.id === 'c1')) sel.value = 'c1';
+    _todos = await Api.getClientes();
+    const sel = $('login-demo-cliente');
+    if (sel) {
+        sel.innerHTML = '<option value="">— elegí un socio de ejemplo —</option>' + _todos.map(c => {
+            const activo = Acceso.planActivo(c);
+            const etq = activo ? 'activo' : (c.estado === 'Congelado' ? 'congelado' : 'vencido');
+            return `<option value="${c.id}">${esc(c.nombre)} ${esc(c.apellido)} · ${esc(c.correo || 'sin correo')} · ${etq}</option>`;
+        }).join('');
+        sel.onchange = () => {
+            const c = _todos.find(x => x.id === sel.value);
+            if (!c) { $('login-hint').innerHTML = ''; return; }
+            $('login-email').value = c.correo || '';
+            actualizarHintLogin(c.id);
+        };
+        // Preselecciona un socio con datos ricos (Matías) si está.
+        if (_todos.some(c => c.id === 'c1')) { sel.value = 'c1'; sel.onchange(); }
+    }
 });
 
+// Pista de la demo: muestra si la cuenta del socio elegido está pendiente o activa.
+function actualizarHintLogin(id) {
+    const hint = $('login-hint');
+    if (!hint || typeof Cuentas === 'undefined') return;
+    hint.innerHTML = (Cuentas.estado(id) === 'activa')
+        ? `<i class="fa-solid fa-circle-check text-emerald-400"></i> Este socio ya eligió su clave. Si la olvidó, el gimnasio la resetea desde el Dashboard.`
+        : `<i class="fa-solid fa-key text-amber-400"></i> Cuenta nueva: ingresá con la clave genérica <b class="text-amber-400">${Cuentas.CLAVE_GENERICA}</b> y elegí tu contraseña.`;
+}
+
 async function portalLogin() {
-    socioId = $('login-cliente').value;
-    if (!socioId) return;
+    const email = ($('login-email').value || '').trim().toLowerCase();
+    const clave = $('login-clave').value || '';
+    if (!email) { toast('Ingresá tu correo', false); return; }
+    const c = _todos.find(x => String(x.correo || '').trim().toLowerCase() === email);
+    if (!c) { toast('No existe una cuenta con ese correo', false); return; }
+
+    const r = Cuentas.verificar(c.id, clave);
+    if (!r.ok) { toast('Correo o contraseña incorrectos', false); return; }
+
+    if (r.requiereCambio) {
+        // Primer ingreso: debe elegir su contraseña.
+        _pendingSetId = c.id;
+        $('set-clave1').value = ''; $('set-clave2').value = '';
+        $('portal-login').classList.add('hidden');
+        $('portal-setpass').classList.remove('hidden');
+        setTimeout(() => $('set-clave1').focus(), 30);
+        return;
+    }
+    entrarComoSocio(c.id);
+}
+
+function portalGuardarClave() {
+    const c1 = $('set-clave1').value || '', c2 = $('set-clave2').value || '';
+    if (c1.length < 6) { toast('La contraseña debe tener al menos 6 caracteres', false); return; }
+    if (c1 !== c2) { toast('Las contraseñas no coinciden', false); return; }
+    if (c1 === Cuentas.CLAVE_GENERICA) { toast('Elegí una clave distinta a la genérica', false); return; }
+    Cuentas.definirClave(_pendingSetId, c1);
+    toast('Contraseña creada ✔');
+    const id = _pendingSetId; _pendingSetId = null;
+    entrarComoSocio(id);
+}
+
+async function entrarComoSocio(id) {
+    socioId = id;
     await recargarSocio();
     $('portal-login').classList.add('hidden');
+    $('portal-setpass').classList.add('hidden');
     $('portal-app').classList.remove('hidden');
     $('hdr-nombre').textContent = `${socio.nombre} ${socio.apellido}`;
-    irA('inicio');
+    // Primer ingreso: debe completar su ficha antes de usar el resto del portal.
+    _onboarding = (typeof Cuentas !== 'undefined') && Cuentas.necesitaDatos(socioId);
+    irA(_onboarding ? 'datos' : 'inicio');
 }
 
 function portalLogout() {
-    // En la demo, "salir" recarga y vuelve al login (resetea el estado).
+    // En la demo, "salir" recarga y vuelve al login (resetea el estado en memoria).
     location.reload();
 }
 
 // ---------- Navegación ----------
 function irA(vista) {
+    // Durante el onboarding (primer ingreso) solo se puede estar en "Mis datos".
+    if (_onboarding && vista !== 'datos') { toast('Primero completá tus datos', false); vista = 'datos'; }
     vistaActual = vista;
     document.querySelectorAll('.view').forEach(v => v.classList.remove('activa'));
     $(`view-${vista}`).classList.add('activa');
@@ -108,11 +168,14 @@ function renderInicio() {
         estadoCard = tarjetaEstado('rose', motivo, 'Renová tu plan para volver a entrar', 'fa-circle-xmark');
     }
 
+    const reservaSub = reserva
+        ? (reserva.usado ? 'Ingreso ya registrado' : (reserva.generado ? 'QR listo · ' + (reserva.bloque || '') : 'Falta generar tu QR · ' + (reserva.bloque || '')))
+        : '';
     const reservaCard = reserva
         ? `<div class="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between">
-              <div><p class="text-[11px] text-slate-400">Tu reserva de hoy</p>
-              <p class="text-white font-bold">${reserva.bloque ? 'Bloque ' + reserva.bloque : 'QR listo'}</p></div>
-              <button onclick="irA('reservar')" class="text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-xl">Ver mi QR</button>
+              <div><p class="text-[11px] text-slate-400">Tu horario de hoy</p>
+              <p class="text-white font-bold">${esc(reservaSub)}</p></div>
+              <button onclick="irA('reservar')" class="text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-xl">${reserva.generado ? 'Ver mi QR' : 'Generar QR'}</button>
            </div>`
         : `<button onclick="irA('reservar')" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-2xl p-4 flex items-center justify-between hover:brightness-110 transition">
               <span class="font-black">Reservar mi horario de hoy</span>
@@ -175,49 +238,117 @@ function renderReservar() {
 
     const hoy = Acceso.hoyISO();
     const reserva = Acceso.reservaDeHoy(socioId);
-    const activos = Horarios.bloquesActivos();
 
+    // ---- Caso A: ya tiene reserva confirmada de hoy ----
+    if (reserva) {
+        const b = Horarios.bloquePorHora(reserva.bloque);
+        const entren = b ? esc(Horarios.entrenadorNombre(b.entrenadorId)) : '';
+        const estadoTxt = reserva.usado
+            ? '<span class="text-amber-400 font-bold">Ya usaste tu ingreso de hoy</span>'
+            : (reserva.generado ? '<span class="text-emerald-400 font-bold">QR listo para la entrada</span>' : '<span class="text-slate-400">Falta generar tu QR</span>');
+
+        cont.innerHTML = `
+            <h2 class="text-xl font-black text-white">Tu horario de hoy</h2>
+            <div class="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4">
+                <p class="text-[11px] text-slate-400">${fechaLinda(hoy)}</p>
+                <p class="text-2xl font-black text-white leading-tight mt-0.5">${esc(reserva.bloque || '—')} hs</p>
+                ${entren ? `<p class="text-xs text-slate-400 mt-0.5"><i class="fa-solid fa-user"></i> ${entren}</p>` : ''}
+                <p class="text-xs mt-2">${estadoTxt}</p>
+            </div>
+
+            ${reserva.usado
+                ? `<div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-center text-sm text-amber-300 font-bold"><i class="fa-solid fa-circle-check"></i> Ingreso registrado. El QR es de un solo uso por día.</div>`
+                : (reserva.generado
+                    ? `<div id="qr-zona"></div>`
+                    : `<button onclick="generarMiQr()" class="w-full py-3.5 rounded-xl font-black text-sm bg-gradient-to-r from-red-600 to-rose-600 text-white hover:brightness-110 transition flex items-center justify-center gap-2">
+                          <i class="fa-solid fa-qrcode text-lg"></i> Generar mi QR
+                       </button>
+                       <p class="text-[11px] text-slate-500 text-center">Tu QR es único e intransferible, válido solo para hoy y para un ingreso.</p>`)}
+
+            <button onclick="cancelarReservaPortal()" class="w-full py-3 rounded-xl font-bold text-sm bg-slate-900 border border-slate-800 text-slate-300 hover:border-rose-500/50 hover:text-rose-300 transition">
+                <i class="fa-solid fa-rotate-left"></i> Cancelar y elegir otro horario
+            </button>`;
+
+        if (reserva.generado && !reserva.usado) pintarQr(reserva);
+        return;
+    }
+
+    // ---- Caso B: elegir un bloque (aún sin reservar) ----
+    const activos = Horarios.bloquesActivos();
     const slots = activos.map(b => {
         const ocup = Horarios.ocupacion(b.hora, hoy);
-        const miReserva = reserva && reserva.bloque === b.hora;
-        const lleno = ocup >= b.cupo && !miReserva;
+        const lleno = ocup >= b.cupo;
+        const sel = _selHora === b.hora;
         const disp = Math.max(0, b.cupo - ocup);
-        const cls = miReserva
+        const cls = sel
             ? 'bg-emerald-500 text-black border-emerald-500'
             : lleno
                 ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
                 : 'bg-slate-950 text-slate-200 border-slate-800 hover:border-slate-600';
-        const etq = miReserva ? 'Reservado' : (lleno ? 'LLENO' : `${disp} cupos`);
-        const etqCls = miReserva ? 'text-black/70' : (lleno ? 'text-rose-400' : 'text-emerald-400');
-        return `<button ${lleno ? 'disabled' : ''} onclick="reservarBloque('${b.hora}')" class="p-3 rounded-xl text-left border transition ${cls}">
+        const etq = sel ? 'Elegido' : (lleno ? 'LLENO' : `${disp} cupos`);
+        const etqCls = sel ? 'text-black/70' : (lleno ? 'text-rose-400' : 'text-emerald-400');
+        return `<button ${lleno ? 'disabled' : ''} onclick="seleccionarBloque('${b.hora}')" class="p-3 rounded-xl text-left border transition ${cls}">
             <div class="flex items-center justify-between"><span class="font-black text-sm">${b.hora}</span>
             <span class="text-[10px] font-bold ${etqCls}">${etq}</span></div>
-            <div class="text-[11px] ${miReserva ? 'text-black/60' : 'text-slate-400'} mt-0.5 truncate">${esc(Horarios.entrenadorNombre(b.entrenadorId))}</div>
+            <div class="text-[11px] ${sel ? 'text-black/60' : 'text-slate-400'} mt-0.5 truncate">${esc(Horarios.entrenadorNombre(b.entrenadorId))}</div>
         </button>`;
     }).join('');
 
     cont.innerHTML = `
         <h2 class="text-xl font-black text-white">Reservar horario de hoy</h2>
-        <p class="text-xs text-slate-400 -mt-2">Elegí tu bloque. Se te entrega <b class="text-white">un QR válido solo para hoy</b> (${fechaLinda(hoy)}).</p>
+        <p class="text-xs text-slate-400 -mt-2">1) Elegí tu bloque · 2) Confirmá · 3) Generá tu QR. Es <b class="text-white">un QR por día</b> (${fechaLinda(hoy)}).</p>
         <div class="grid grid-cols-2 gap-2">${slots || '<p class="text-slate-500 text-sm col-span-2 text-center py-4">No hay bloques activos hoy.</p>'}</div>
-        <div id="qr-zona" class="mt-2"></div>`;
+        <div id="confirm-zona" class="mt-1"></div>`;
 
-    if (reserva) pintarQr(reserva);
+    pintarConfirm();
 }
 
-function reservarBloque(hora) {
+// Marca un bloque como elegido (todavía no reserva).
+function seleccionarBloque(hora) {
     const b = Horarios.bloquePorHora(hora);
     if (!b || !b.activo) return;
-    const reserva = Acceso.reservaDeHoy(socioId);
-    const yaEnEste = reserva && reserva.bloque === hora;
-    if (!yaEnEste && Horarios.ocupacion(hora, Acceso.hoyISO()) >= b.cupo) {
-        toast('Ese bloque está lleno', false);
-        return;
-    }
-    const nueva = Acceso.emitirQrDia(socio, hora);
+    if (Horarios.ocupacion(hora, Acceso.hoyISO()) >= b.cupo) { toast('Ese bloque está lleno', false); return; }
+    _selHora = hora;
     renderReservar();
-    toast(`Reservado ${hora} · QR listo`);
-    setTimeout(() => pintarQr(nueva), 20);
+}
+
+// Botón "Confirmar horario" cuando hay un bloque elegido.
+function pintarConfirm() {
+    const z = $('confirm-zona');
+    if (!z) return;
+    if (!_selHora) { z.innerHTML = ''; return; }
+    z.innerHTML = `
+        <button onclick="confirmarHorario()" class="w-full py-3.5 rounded-xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-black hover:brightness-110 transition">
+            <i class="fa-solid fa-check"></i> Confirmar horario ${esc(_selHora)}
+        </button>
+        <p class="text-[11px] text-slate-500 text-center mt-2">Después vas a poder generar tu QR. Si te equivocás, lo cancelás y elegís otro.</p>`;
+}
+
+function confirmarHorario() {
+    if (!_selHora) return;
+    const b = Horarios.bloquePorHora(_selHora);
+    if (!b || !b.activo) return;
+    if (Horarios.ocupacion(_selHora, Acceso.hoyISO()) >= b.cupo) {
+        toast('Ese bloque se llenó', false); _selHora = null; renderReservar(); return;
+    }
+    Acceso.reservarBloque(socio, _selHora);
+    _selHora = null;
+    toast('Horario confirmado ✔');
+    renderReservar();
+}
+
+function generarMiQr() {
+    const r = Acceso.generarQr(socioId);
+    if (r) toast('QR generado ✔');
+    renderReservar();
+}
+
+function cancelarReservaPortal() {
+    if (!confirm('¿Cancelar tu horario de hoy?\n\nSe anula el QR actual y vas a poder elegir otra hora (se genera uno nuevo).')) return;
+    Acceso.cancelarReserva(socioId);
+    _selHora = null;
+    toast('Reserva cancelada');
+    renderReservar();
 }
 
 function pintarQr(reserva) {
@@ -226,11 +357,11 @@ function pintarQr(reserva) {
     zona.innerHTML = `
         <div class="bg-white rounded-2xl p-4 flex flex-col items-center gap-3">
             <div id="qr-box"></div>
-            <p class="text-black text-xs font-bold">Bloque ${reserva.bloque || '—'} · ${fechaLinda(reserva.fecha)}</p>
+            <p class="text-black text-xs font-bold">Bloque ${esc(reserva.bloque || '—')} · ${fechaLinda(reserva.fecha)}</p>
         </div>
         <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 mt-3 text-center">
             <p class="text-emerald-400 text-sm font-bold"><i class="fa-solid fa-circle-check"></i> Mostrá este QR en la entrada</p>
-            <p class="text-[11px] text-slate-400 mt-0.5">Vale por hoy. Mañana generá uno nuevo al reservar.</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Único e intransferible · un solo ingreso hoy. Mañana generás uno nuevo.</p>
         </div>`;
     const box = $('qr-box');
     box.innerHTML = '';
@@ -243,7 +374,15 @@ function renderDatos() {
         `<div><label class="text-[11px] text-slate-400 font-semibold block mb-1">${label}</label>
          <input id="d-${id}" type="${type}" value="${esc(val)}" placeholder="${ph}" class="w-full bg-black border border-slate-800 rounded-xl p-3 text-white text-sm"></div>`;
 
+    const banner = _onboarding ? `
+        <div class="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 flex items-start gap-3">
+            <i class="fa-solid fa-clipboard-list text-amber-400 text-lg mt-0.5"></i>
+            <div><p class="text-amber-300 font-black text-sm">Completá tu ficha para empezar</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Para activar tu acceso necesitamos: RUT, teléfono, cumpleaños, género y un contacto de emergencia.</p></div>
+        </div>` : '';
+
     $('view-datos').innerHTML = `
+        ${banner}
         <h2 class="text-xl font-black text-white">Mis datos</h2>
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
             <p class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Personales</p>
@@ -279,12 +418,12 @@ function renderDatos() {
             <div class="grid grid-cols-2 gap-3">${f('emergencia2Nombre', 'Contacto 2 — Nombre', socio.emergencia2Nombre)}${f('emergencia2Telefono', 'Contacto 2 — Teléfono', socio.emergencia2Telefono, 'tel')}</div>
             ${f('emergenciaLugar', '¿Dónde llevarte en una emergencia? (clínica / hospital)', socio.emergenciaLugar)}
         </div>
-        <button onclick="guardarDatos()" class="w-full py-3 rounded-xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-black">Guardar mis datos</button>`;
+        <button onclick="guardarDatos()" class="w-full py-3 rounded-xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-black">${_onboarding ? 'Guardar y continuar' : 'Guardar mis datos'}</button>`;
 }
 
 async function guardarDatos() {
     const val = (id) => { const el = $('d-' + id); return el ? (el.value.trim() || null) : null; };
-    await Api.actualizarCliente(socioId, {
+    const datos = {
         rut: val('rut'), nombre: val('nombre') || socio.nombre, apellido: val('apellido') || socio.apellido,
         correo: val('correo'), telefono: val('telefono'), cumpleanos: val('cumpleanos'), genero: $('d-genero').value || null,
         saludControlesAlDia: $('d-saludControlesAlDia').checked,
@@ -294,10 +433,31 @@ async function guardarDatos() {
         emergencia1Nombre: val('emergencia1Nombre'), telefonoEmergencia: val('telefonoEmergencia'),
         emergencia2Nombre: val('emergencia2Nombre'), emergencia2Telefono: val('emergencia2Telefono'),
         emergenciaLugar: val('emergenciaLugar')
-    });
+    };
+
+    // En el primer ingreso, exigir los campos clave de la ficha.
+    if (_onboarding) {
+        const req = [
+            ['rut', 'RUT'], ['telefono', 'Teléfono'], ['cumpleanos', 'Cumpleaños'],
+            ['genero', 'Género'], ['emergencia1Nombre', 'Contacto de emergencia (nombre)'],
+            ['telefonoEmergencia', 'Contacto de emergencia (teléfono)']
+        ];
+        const faltan = req.filter(([k]) => !datos[k]).map(([, label]) => label);
+        if (faltan.length) { toast('Falta completar: ' + faltan.join(', '), false); return; }
+    }
+
+    await Api.actualizarCliente(socioId, datos);
     await recargarSocio();
     $('hdr-nombre').textContent = `${socio.nombre} ${socio.apellido}`;
-    toast('Datos guardados ✔');
+
+    if (_onboarding) {
+        Cuentas.marcarDatosListos(socioId);
+        _onboarding = false;
+        toast('¡Listo! Bienvenido/a 🎉');
+        irA('inicio');
+    } else {
+        toast('Datos guardados ✔');
+    }
 }
 
 // ---------- PAGOS ----------

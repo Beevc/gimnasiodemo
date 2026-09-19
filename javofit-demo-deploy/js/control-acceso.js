@@ -78,12 +78,11 @@ function planNombre(id) {
 // ---------- Simular escaneo (demo, sin cámara) ----------
 function simularEscaneo() {
     const id = $('sim-socio').value;
-    const socio = (typeof CLIENTES_DEMO !== 'undefined') ? CLIENTES_DEMO.find(c => c.id === id) : null;
-    if (!socio) return;
-    // Emite el QR del día de ese socio (como si lo hubiera sacado en el portal)
-    const reserva = Acceso.emitirQrDia(socio, null);
+    // Toma el QR vigente del socio (o le crea uno de hoy si no reservó), como si lo mostrara.
+    const qr = Acceso.qrSimular(id);
+    if (!qr) return;
     procesando = false;               // permitir re-simular seguido
-    procesarQr(reserva.qr);
+    procesarQr(qr);
 }
 
 function validarPegado() {

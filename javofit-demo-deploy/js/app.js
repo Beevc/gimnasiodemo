@@ -804,6 +804,7 @@ function abrirModalEditarCliente(id) {
     renderizarMedidasEditable(c);
     renderizarPRsHistorial(c);
     renderizarContrato(c);
+    if (typeof renderizarCuentaPortal === 'function') renderizarCuentaPortal(c); // cuenta del portal (usuario/clave)
     cargarSaludCliente(c.id); // carga Nutri/Kine bajo demanda (async, no bloquea)
 
     // Si el expediente YA estaba abierto, esto es un re-render tras
@@ -2741,6 +2742,7 @@ function reiniciarDemo() {
         localStorage.removeItem('javofit_demo_reservas_v1');
         localStorage.removeItem('gd_socios_overrides_v1');
         localStorage.removeItem('gd_config_v1');
+        localStorage.removeItem('gd_cuentas_v1');
     } catch (_) { }
     location.reload();
 }
