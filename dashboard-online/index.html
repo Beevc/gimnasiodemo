@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavoFit - Admin Control Center Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase JS client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @keyframes spin-slow {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .animate-spin-slow {
+            animation: spin-slow 4s linear infinite;
+        }
+        #wheel {
+            transition: transform 4s cubic-bezier(0.15, 0.95, 0.15, 1);
+        }
+        @keyframes tv-fade-in {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .tv-fade { animation: tv-fade-in 0.6s ease-out; }
+
+        /* ===== Tabla de clientes: tarjetas en celular (sin scroll lateral) ===== */
+        @media (max-width: 767px) {
+            .tabla-clientes { min-width: 0 !important; }
+            .tabla-clientes thead { display: none; }
+            .tabla-clientes tbody { display: flex; flex-direction: column; gap: 0.75rem; }
+            .tabla-clientes tbody tr {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas:
+                    "cliente estado"
+                    "plan    racha"
+                    "cumple  cumple"
+                    "acciones acciones";
+                gap: 0.5rem 0.75rem;
+                background: rgba(15, 23, 42, 0.6);      /* slate-900/60 */
+                border: 1px solid rgb(30, 41, 59);       /* slate-800 */
+                border-radius: 1rem;
+                padding: 1rem;
+            }
+            /* quita el padding de celda de escritorio dentro de la tarjeta */
+            .tabla-clientes tbody td { padding: 0 !important; }
+
+            .tabla-clientes td.col-cliente  { grid-area: cliente; min-width: 0; }
+            .tabla-clientes td.col-estado   { grid-area: estado; justify-self: end; text-align: right; }
+            .tabla-clientes td.col-plan     { grid-area: plan; }
+            .tabla-clientes td.col-racha    { grid-area: racha; }
+            .tabla-clientes td.col-cumple   { grid-area: cumple; }
+            .tabla-clientes td.col-acciones { grid-area: acciones; }
+
+            /* etiqueta pequeña arriba de cada dato */
+            .tabla-clientes td.col-plan::before,
+            .tabla-clientes td.col-racha::before,
+            .tabla-clientes td.col-cumple::before {
+                content: attr(data-label);
+                display: block;
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: rgb(71, 85, 105);                 /* slate-600 */
+                margin-bottom: 2px;
+            }
+
+            /* separador antes de plan y antes de acciones */
+            .tabla-clientes td.col-plan     { border-top: 1px solid rgba(30,41,59,0.7); padding-top: 0.5rem !important; }
+            .tabla-clientes td.col-racha    { border-top: 1px solid rgba(30,41,59,0.7); padding-top: 0.5rem !important; }
+            .tabla-clientes td.col-acciones {
+                border-top: 1px solid rgba(30,41,59,0.7);
+                padding-top: 0.75rem !important;
+                display: flex;
+                gap: 0.5rem;
+                text-align: left !important;
+            }
+            .tabla-clientes td.col-acciones > button:nth-child(1),
+            .tabla-clientes td.col-acciones > button:nth-child(2) { flex: 1 1 0; }
+            .tabla-clientes td.col-acciones > button { padding-top: 0.6rem; padding-bottom: 0.6rem; margin-left: 0 !important; }
+        }
+    </style>
+</head>
+<body class="bg-black text-slate-100 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- ================= PANTALLA DE LOGIN ================= -->
+    <div id="login-screen" class="fixed inset-0 bg-black z-[100] flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl">
+            <div class="flex flex-col items-center gap-3 text-center">
+                <img src="img/logo.png" alt="JavoFit" class="h-14 w-auto object-contain" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+                <svg viewBox="0 0 64 64" width="52" height="52" xmlns="http://www.w3.org/2000/svg" aria-label="JavoFit" style="display:none">
+                    <path d="M21 31 C15 21 21 11 32 11 C43 11 49 21 43 31" fill="none" stroke="#DC1E34" stroke-width="7" stroke-linecap="round"/>
+                    <circle cx="32" cy="41" r="16.5" fill="#DC1E34"/>
+                </svg>
+                <div>
+                    <span class="text-red-500 text-xs font-bold tracking-wider block">PRO ADMIN</span>
+                    <span class="text-[10px] text-slate-500 font-medium">Acceso de Staff</span>
+                </div>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-slate-400 mb-1 text-xs">Correo</label>
+                    <input type="email" id="login-email" required placeholder="staff@javofit.cl" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-sm outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 text-xs">Contraseña</label>
+                    <input type="password" id="login-password" required placeholder="••••••••" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-sm outline-none focus:border-emerald-500">
+                </div>
+                <div id="login-error" class="hidden text-rose-400 text-xs bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5"></div>
+                <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-2.5 rounded-xl text-sm transition">Iniciar Sesión</button>
+            </form>
+            <p class="text-[10px] text-slate-600 text-center">Los usuarios de staff se crean desde el panel de Supabase (Authentication → Users). Ver README.</p>
+        </div>
+    </div>
+
+    <!-- ================= OVERLAY DE CARGA ================= -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black/70 z-[90] flex items-center justify-center">
+        <div class="text-emerald-400 text-sm font-bold flex items-center gap-3">
+            <i class="fa-solid fa-spinner fa-spin text-xl"></i> Cargando datos...
+        </div>
+    </div>
+
+    <!-- ================= APP (visible solo tras login) ================= -->
+    <div id="app-shell" class="hidden">
+
+    <!-- HEADER ADMIN -->
+    <header class="bg-slate-950 border-b border-slate-900 p-4 flex justify-between items-center px-4 md:px-8 flex-shrink-0 z-50 gap-2">
+        <div class="flex items-center gap-2 md:gap-3 min-w-0">
+            <button onclick="toggleSidebar()" class="md:hidden text-slate-300 hover:text-white text-xl px-1 flex-shrink-0" aria-label="Abrir menú"><i class="fa-solid fa-bars"></i></button>
+            <img src="img/logo.png" alt="JavoFit" class="h-9 w-auto object-contain flex-shrink-0" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';">
+            <svg viewBox="0 0 64 64" width="40" height="40" xmlns="http://www.w3.org/2000/svg" aria-label="JavoFit" class="flex-shrink-0" style="display:none">
+                <path d="M21 31 C15 21 21 11 32 11 C43 11 49 21 43 31" fill="none" stroke="#DC1E34" stroke-width="7" stroke-linecap="round"/>
+                <circle cx="32" cy="41" r="16.5" fill="#DC1E34"/>
+            </svg>
+            <div class="border-l border-slate-800 pl-3 hidden sm:block">
+                <span class="text-red-500 text-[11px] font-bold tracking-wider block leading-none">PRO ADMIN</span>
+                <span class="text-[10px] text-slate-500 font-medium">Conectado a Supabase • Datos en tiempo real</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 md:gap-3 flex-shrink-0">
+            <button onclick="abrirConfiguracionTV()" class="px-3 md:px-3.5 py-2 rounded-xl font-bold text-xs bg-slate-900 text-slate-300 border border-slate-800 hover:text-white transition flex items-center gap-2">
+                <i class="fa-solid fa-gear text-amber-400"></i> <span class="hidden sm:inline">Config TV</span>
+            </button>
+            <button onclick="abrirModoTV()" class="px-3 md:px-4 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-orange-500 text-black hover:brightness-110 transition shadow-lg shadow-amber-500/10 flex items-center gap-2">
+                <i class="fa-solid fa-tv"></i> <span class="hidden sm:inline">Modo TV Leaderboard (Fin de Mes)</span><span class="sm:hidden">TV</span>
+            </button>
+            <div class="h-6 w-px bg-slate-800 hidden md:block"></div>
+            <button id="chip-fichas-incompletas" onclick="irAFichasIncompletas()" title="Fichas por completar — clic para ver los clientes sin teléfono" class="hidden items-center gap-2 bg-slate-900 border border-amber-500/30 px-3 py-1.5 rounded-xl hover:border-amber-500/60 transition">
+                <span id="chip-fichas-texto" class="text-[10px] font-bold text-amber-400 whitespace-nowrap"></span>
+            </button>
+            <div class="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl hidden md:flex">
+                <span class="text-[10px] font-bold text-slate-400">Rol:</span>
+                <span class="text-xs font-black text-emerald-400" id="current-user-role">Staff</span>
+            </div>
+            <button id="btn-logout" class="px-3 py-2 rounded-xl font-bold text-xs bg-slate-900 text-slate-400 border border-slate-800 hover:text-rose-400 hover:border-rose-500/30 transition flex-shrink-0">
+                <i class="fa-solid fa-right-from-bracket"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 overflow-hidden flex">
+
+        <!-- Fondo oscuro al abrir el menú en celular -->
+        <div id="sidebar-backdrop" onclick="cerrarSidebarMobile()" class="hidden fixed inset-0 bg-black/60 z-40 md:hidden"></div>
+
+        <!-- SIDEBAR DE NAVEGACIÓN -->
+        <aside id="sidebar" class="w-64 bg-slate-950 border-r border-slate-900 flex flex-col p-4 flex-shrink-0 fixed inset-y-0 left-0 z-50 -translate-x-full transition-transform duration-200 overflow-y-auto md:static md:translate-x-0 md:z-auto">
+            <div class="flex justify-end md:hidden mb-2">
+                <button onclick="cerrarSidebarMobile()" class="text-slate-400 hover:text-white text-lg px-2" aria-label="Cerrar menú"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <nav class="space-y-1.5 text-xs font-semibold">
+                <button onclick="cambiarSeccionAdmin('sec-alumnos')" id="nav-sec-alumnos" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-left font-bold transition">
+                    <i class="fa-solid fa-users text-base"></i> Gestión de Clientes
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-renovaciones')" id="nav-sec-renovaciones" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-rotate-right text-base text-cyan-400"></i> Renovaciones & Pagos
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-asistencia-mensual')" id="nav-sec-asistencia-mensual" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-calendar-check text-base text-emerald-400"></i> Asistencia Mensual & Premios
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-ruleta')" id="nav-sec-ruleta" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-dharmachakra text-base text-yellow-400"></i> Ruleta de Premios
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-asistencias')" id="nav-sec-asistencias" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-clipboard-user text-base text-teal-400"></i> Control Diario
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-cumpleanos')" id="nav-sec-cumpleanos" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-cake-candles text-base text-purple-400"></i> Cumpleaños & Fechas
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-mensajes')" id="nav-sec-mensajes" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-brands fa-whatsapp text-base text-green-400"></i> Mensajes WhatsApp
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-grupo-wsp')" id="nav-sec-grupo-wsp" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-users text-base text-green-400"></i> Grupo WhatsApp
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-metricas')" id="nav-sec-metricas" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-chart-pie text-base text-amber-400"></i> Finanzas & Métricas
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-analitica')" id="nav-sec-analitica" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-chart-line text-base text-cyan-400"></i> Analítica & Datos
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-personal')" id="nav-sec-personal" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-user-shield text-base text-rose-400"></i> Personal & Permisos
+                </button>
+                <button onclick="cambiarSeccionAdmin('sec-protocolo')" id="nav-sec-protocolo" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-400 hover:bg-slate-900 hover:text-white text-left transition">
+                    <i class="fa-solid fa-clipboard-list text-base text-sky-400"></i> Protocolo de Bienvenida
+                </button>
+            </nav>
+        </aside>
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="flex-1 overflow-y-auto p-6 bg-slate-950/50 space-y-6">
+
+            <!-- ================= 1. GESTIÓN DE CLIENTES ================= -->
+            <div id="sec-alumnos" class="space-y-6">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Directorio de Clientes</h1>
+                        <p class="text-xs text-slate-500">Expedientes completos, control de rachas, medidas, PRs y opción de resetear racha por atrasos.</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-2xl px-4 py-2" title="Activos = al día + pendientes + congelados · Inactivos = vencidos">
+                            <div class="text-center">
+                                <div class="text-lg font-black text-emerald-400 leading-none" id="resumen-activos">0</div>
+                                <div class="text-[9px] text-slate-500 font-bold uppercase mt-0.5">Activos</div>
+                            </div>
+                            <div class="w-px h-7 bg-slate-700"></div>
+                            <div class="text-center">
+                                <div class="text-lg font-black text-rose-400 leading-none" id="resumen-inactivos">0</div>
+                                <div class="text-[9px] text-slate-500 font-bold uppercase mt-0.5">Inactivos</div>
+                            </div>
+                            <div class="w-px h-7 bg-slate-700"></div>
+                            <div class="text-center">
+                                <div class="text-lg font-black text-slate-200 leading-none" id="resumen-total">0</div>
+                                <div class="text-[9px] text-slate-500 font-bold uppercase mt-0.5">Total</div>
+                            </div>
+                        </div>
+                        <button onclick="abrirModalImportarCSV()" class="bg-slate-800 hover:bg-slate-700 text-white font-black px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 transition border border-slate-700">
+                            <i class="fa-solid fa-file-import text-cyan-400"></i> Importar CSV (masivo)
+                        </button>
+                        <button onclick="abrirModalNuevoAlumno()" class="bg-emerald-500 hover:bg-emerald-400 text-black font-black px-5 py-2.5 rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition">
+                            <i class="fa-solid fa-user-plus"></i> Registrar Nuevo Cliente
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resumen del día (home): por vencer + cumpleaños -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-black text-white"><i class="fa-solid fa-clock text-amber-400"></i> Por vencer esta semana</h3>
+                            <span id="home-vencer-count" class="text-[10px] font-bold text-amber-400"></span>
+                        </div>
+                        <div id="home-vencer-lista" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-black text-white"><i class="fa-solid fa-cake-candles text-pink-400"></i> Cumpleaños & aniversarios (7 días)</h3>
+                            <span id="home-cumple-count" class="text-[10px] font-bold text-pink-400"></span>
+                        </div>
+                        <div id="home-cumple-lista" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+                    </div>
+                </div>
+
+                <!-- Filtros -->
+                <div class="bg-slate-900/80 border border-slate-800 p-4 rounded-3xl space-y-3">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-500 text-xs"></i>
+                        <input type="text" id="filtro-buscar" onkeyup="aplicarFiltrosClientes()" placeholder="Buscar por nombre, correo o teléfono..." class="w-full bg-black border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <select id="filtro-genero" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-teal-400 font-bold outline-none">
+                            <option value="TODOS">⚧ Género: todos</option>
+                            <option value="M">♂ Masculino</option>
+                            <option value="F">♀ Femenino</option>
+                            <option value="SIN">❔ Sin género (completar)</option>
+                        </select>
+                        <select id="filtro-estado" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 font-bold outline-none">
+                            <option value="TODOS">Todos los Estados</option>
+                            <option value="Al día">Estado: Al día</option>
+                            <option value="Pendiente">Estado: Pendiente</option>
+                            <option value="Vencido">Estado: Vencido</option>
+                            <option value="VENCIDO_SIN_CONTACTAR">📞 Vencidos sin contactar</option>
+                            <option value="VENCIDO_CONTACTADO">✅ Vencidos ya contactados</option>
+                            <option value="Congelado">❄️ Estado: Congelado</option>
+                            <option value="PROXIMO_VENCER">⏰ Próximos a Vencer</option>
+                        </select>
+                        <select id="filtro-letra" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-pink-400 font-bold outline-none">
+                            <option value="TODAS">🔤 Inicial: todas</option>
+                            <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option><option value="F">F</option><option value="G">G</option><option value="H">H</option><option value="I">I</option><option value="J">J</option><option value="K">K</option><option value="L">L</option><option value="M">M</option><option value="N">N</option><option value="Ñ">Ñ</option><option value="O">O</option><option value="P">P</option><option value="Q">Q</option><option value="R">R</option><option value="S">S</option><option value="T">T</option><option value="U">U</option><option value="V">V</option><option value="W">W</option><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option><option value="#">Otros (# / símbolo)</option>
+                        </select>
+                        <select id="filtro-telefono" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-rose-300 font-bold outline-none">
+                            <option value="TODOS">📱 Teléfono: todos</option>
+                            <option value="CON">✅ Con teléfono</option>
+                            <option value="SIN">❌ Sin teléfono</option>
+                        </select>
+                        <select id="filtro-racha" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-amber-400 font-bold outline-none">
+                            <option value="TODOS">Todas las Rachas</option>
+                            <option value="PROXIMO_BONO">Próximos a Bono</option>
+                            <option value="MAXIMA">Racha Máxima (20 Meses)</option>
+                        </select>
+                        <select id="filtro-orden" onchange="aplicarFiltrosClientes()" class="w-full bg-black border border-slate-800 rounded-xl px-3 py-2 text-xs text-cyan-400 font-bold outline-none">
+                            <option value="RECIENTES">🆕 Recién agregados</option>
+                            <option value="PAGOS">💳 Pagos recientes</option>
+                            <option value="AZ">Nombre A → Z</option>
+                            <option value="ZA">Nombre Z → A</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tabla de Clientes -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="tabla-clientes w-full min-w-[860px] text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold tracking-wider">
+                                <tr>
+                                    <th class="p-4 whitespace-nowrap">Cliente / Contacto</th>
+                                    <th class="p-4 whitespace-nowrap">Plan & Vencimiento</th>
+                                    <th class="p-4 whitespace-nowrap">Racha (20M)</th>
+                                    <th class="p-4 whitespace-nowrap">Cumpleaños</th>
+                                    <th class="p-4 whitespace-nowrap">Estado</th>
+                                    <th class="p-4 text-right whitespace-nowrap">Acciones & Reset Racha</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-admin-body" class="divide-y divide-slate-800/50 text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 2. RENOVACIONES & HISTORIAL DE PAGOS ================= -->
+            <div id="sec-renovaciones" class="space-y-6 hidden">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Centro de Renovaciones & Historial de Pagos</h1>
+                        <p class="text-xs text-slate-500">Renueva membresías detalladamente (fecha, monto, tipo de pago y plan) y controla el estado financiero.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-rose-400 font-bold uppercase">Membresías Vencidas</span>
+                        <div class="text-xl font-black text-white" id="count-vencidos">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-amber-400 font-bold uppercase">Vencen en Menos de 5 Días</span>
+                        <div class="text-xl font-black text-white" id="count-proximos">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-emerald-400 font-bold uppercase">Al Día</span>
+                        <div class="text-xl font-black text-white" id="count-aldia">0</div>
+                    </div>
+                </div>
+
+                <!-- Buscador + filtros de renovación -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div class="md:col-span-2 relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                        <input type="text" id="filtro-renov" oninput="renderizarRenovaciones()" placeholder="Buscar cliente para renovar..." class="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-white text-xs outline-none focus:border-cyan-500">
+                    </div>
+                    <div>
+                        <select id="filtro-renov-estado" onchange="renderizarRenovaciones()" class="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 px-4 text-slate-300 text-xs font-bold outline-none focus:border-cyan-500">
+                            <option value="TODOS">Todos los estados</option>
+                            <option value="VENCIDOS">🔴 Vencidos</option>
+                            <option value="PROXIMOS">🟠 Vencen en ≤5 días</option>
+                            <option value="ALDIA">🟢 Al día</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select id="filtro-renov-orden" onchange="renderizarRenovaciones()" class="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 px-4 text-cyan-400 text-xs font-bold outline-none focus:border-cyan-500">
+                            <option value="VENCE">Ordenar: vence primero</option>
+                            <option value="AZ">Nombre A → Z</option>
+                            <option value="ZA">Nombre Z → A</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tabla de Renovaciones -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-800 font-bold text-white text-xs uppercase tracking-wider">Listado para Renovación y Estado de Pagos</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
+                                <tr>
+                                    <th class="p-4">Cliente</th>
+                                    <th class="p-4">Plan Actual</th>
+                                    <th class="p-4">Fecha Vencimiento</th>
+                                    <th class="p-4">Últimos Pagos Registrados</th>
+                                    <th class="p-4 text-right">Acción de Renovación Personalizada</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-renovaciones-body" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 3. ASISTENCIA MENSUAL & PREMIOS POR CONSTANCIA ================= -->
+            <div id="sec-asistencia-mensual" class="space-y-6 hidden">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Control de Asistencia Mensual & Premios (Fin de Mes)</h1>
+                        <p class="text-xs text-slate-500">Monitoreo de asistencia del mes actual.</p>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 p-5 rounded-3xl flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                        <h3 class="font-bold text-white text-sm">🏆 Meta de Asistencia Cumplida (20 días planes 5d · 12 días planes 3d)</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">Los finalistas que cumplen la meta de su plan quedan habilitados automáticamente para el sorteo en la ruleta.</p>
+                    </div>
+                    <button onclick="otorgarPremiosAsistenciaMasiva()" class="bg-emerald-500 hover:bg-emerald-400 text-black font-black px-4 py-2 rounded-xl text-xs shadow-lg shadow-emerald-500/20">
+                        <i class="fa-solid fa-gift"></i> Procesar Premios Masivos
+                    </button>
+                </div>
+
+                <!-- Tabla de Asistencia Mensual -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
+                                <tr>
+                                    <th class="p-4">Cliente</th>
+                                    <th class="p-4">Asistencias Este Mes</th>
+                                    <th class="p-4">Progreso de Meta (según plan)</th>
+                                    <th class="p-4">Estado Finalista Ruleta</th>
+                                    <th class="p-4 text-right">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-asistencia-mensual-body" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 4. RULETA DE PREMIOS ================= -->
+            <div id="sec-ruleta" class="space-y-6 hidden">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Ruleta de Premios JavoFit (Finalistas Fin de Mes)</h1>
+                        <p class="text-xs text-slate-500">Sorteo exclusivo para clientes que completaron la asistencia requerida.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div class="space-y-4 lg:col-span-1">
+                        <!-- Participantes automáticos -->
+                        <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-white uppercase tracking-wider">Participantes</h3>
+                                <span id="ruleta-conteo" class="text-[10px] text-slate-500"></span>
+                            </div>
+                            <p class="text-[10px] text-slate-500">Entran automáticamente quienes cumplieron su meta (20 días en planes de 5d, 12 en planes de 3d). Si cumplen menos de 3, se completa con los más cercanos.</p>
+                            <div id="ruleta-participantes" class="space-y-2 max-h-56 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Premios -->
+                        <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-2 text-xs">
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider mb-1">Premios</h3>
+                            <div class="flex items-center gap-2"><span>🥇</span><span class="text-slate-300"><b class="text-amber-400">1er Lugar:</b> Cupón $10.000 para cualquier plan</span></div>
+                            <div class="flex items-center gap-2"><span>🥈</span><span class="text-slate-300"><b class="text-slate-300">2do Lugar:</b> Frappé + Snack</span></div>
+                            <div class="flex items-center gap-2"><span>🥉</span><span class="text-slate-300"><b class="text-orange-400">3er Lugar:</b> Frappé o Snack</span></div>
+                        </div>
+
+                        <div class="flex gap-2">
+                            <button onclick="girarRuleta()" id="btn-girar" class="flex-1 py-3 bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 hover:brightness-110 transition">
+                                <i class="fa-solid fa-dharmachakra"></i> ¡Girar!
+                            </button>
+                            <button onclick="reiniciarRuleta()" class="px-4 py-3 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs hover:bg-slate-700"><i class="fa-solid fa-rotate-left"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 flex flex-col items-center justify-center lg:col-span-2 relative min-h-[400px]">
+                        <div class="absolute top-4 z-10 w-0 h-0 border-l-[12px] border-l-transparent border-r-[12px] border-r-transparent border-t-[20px] border-t-amber-400 filter drop-shadow"></div>
+                        <div class="relative w-72 h-72 sm:w-80 sm:h-80 rounded-full border-4 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center bg-slate-950">
+                            <div id="wheel" class="absolute inset-0 rounded-full transition-transform duration-[4000ms] ease-out flex items-center justify-center" style="transform: rotate(0deg);">
+                                <div class="absolute inset-0 bg-[conic-gradient(#10b981_0deg_60deg,#f59e0b_60deg_120deg,#06b6d4_120deg_180deg,#8b5cf6_180deg_240deg,#ec4899_240deg_300deg,#3b82f6_300deg_360deg)]"></div>
+                            </div>
+                            <div class="absolute w-16 h-16 bg-slate-950 border-4 border-slate-800 rounded-full z-10 flex items-center justify-center shadow-inner">
+                                <i class="fa-solid fa-bolt text-amber-400 text-lg"></i>
+                            </div>
+                        </div>
+
+                        <!-- Ganadores del sorteo -->
+                        <div id="ruleta-ganadores" class="w-full mt-6 space-y-2"></div>
+                        <p id="ruleta-mensaje" class="text-[11px] text-slate-500 mt-3 text-center">Presiona «Girar» para sortear el 1er premio. No se puede repetir ganador.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= 5. CONTROL DIARIO DE ASISTENCIAS ================= -->
+            <div id="sec-asistencias" class="space-y-6 hidden">
+                <h1 class="text-2xl font-black text-white tracking-tight">Control Diario de Asistencias</h1>
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-4">
+                    <div class="flex justify-between items-center flex-wrap gap-2">
+                        <span class="text-xs text-slate-400">Día de hoy:</span>
+                        <input type="date" id="fecha-cierre-mes" class="bg-black border border-slate-800 rounded-xl px-3 py-1 text-xs text-white">
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <input type="text" id="buscar-asistencia" oninput="renderizarAsistencias()" placeholder="🔎 Escribe un nombre para marcar presente..." class="flex-1 min-w-[200px] bg-black border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-emerald-500">
+                        <span id="asist-contador" class="text-[11px] text-emerald-400 font-bold whitespace-nowrap"></span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="grid-asistencias"></div>
+                </div>
+            </div>
+
+            <!-- ================= 6. CUMPLEAÑOS Y ANIVERSARIOS ================= -->
+            <div id="sec-cumpleanos" class="space-y-6 hidden">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Fidelización & Fechas Especiales</h1>
+                        <p class="text-xs text-slate-500">Felicitaciones de cumpleaños y aniversarios de permanencia.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-4">
+                        <div class="flex items-center gap-2 border-b border-slate-800 pb-3">
+                            <span class="text-xl">🎂</span><h3 class="text-sm font-bold text-white">Cumpleañeros Registrados</h3>
+                        </div>
+                        <div id="lista-cumpleanos" class="space-y-3"></div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-4">
+                        <div class="flex items-center gap-2 border-b border-slate-800 pb-3">
+                            <span class="text-xl">🎉</span><h3 class="text-sm font-bold text-white">Aniversarios en el Gym (1 Año +)</h3>
+                        </div>
+                        <div id="lista-aniversarios" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================= MENSAJES WHATSAPP ================= -->
+            <div id="sec-mensajes" class="space-y-6 hidden">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Mensajes de WhatsApp</h1>
+                        <p class="text-xs text-slate-500">Revisa y envía con un clic. Cada botón abre WhatsApp con el mensaje ya escrito — tú solo confirmas el envío.</p>
+                    </div>
+                </div>
+
+                <!-- Cumpleaños del mes (descuento $2.000) -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl">🎂</span>
+                            <h3 class="text-sm font-bold text-white">Cumpleaños de <span id="msg-cumple-mes" class="text-purple-300">este mes</span></h3>
+                        </div>
+                        <span id="msg-cumple-conteo" class="text-[10px] text-slate-500"></span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Clientes que cumplen años este mes. El mensaje incluye $2.000 de descuento de regalo.</p>
+                    <div id="lista-msg-cumple" class="space-y-3"></div>
+                </div>
+
+                <!-- Felicitaciones de racha (piso 5, 10, 15, 20) -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-4">
+                    <div class="flex items-center gap-2 border-b border-slate-800 pb-3">
+                        <span class="text-xl">🔥</span>
+                        <h3 class="text-sm font-bold text-white">Felicitaciones + cupón por racha (a 5 días de completar el mes 5, 10, 15 o 20)</h3>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Clientes a quienes les quedan 5 días o menos para pagar el mes que los lleva a un piso premiado. El mensaje los felicita e incluye el cupón de descuento de ese piso.</p>
+                    <div id="lista-msg-racha" class="space-y-3"></div>
+                </div>
+
+                <!-- Recordatorios de renovación (vence pronto) -->
+                <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-4">
+                    <div class="flex items-center gap-2 border-b border-slate-800 pb-3">
+                        <span class="text-xl">⏰</span>
+                        <h3 class="text-sm font-bold text-white">Recordatorios de renovación (vencen en 5 días o menos)</h3>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Avísales antes de que venza para que renueven a tiempo y no pierdan su racha (se pierde si el pago se atrasa más de 4 días).</p>
+                    <div id="lista-msg-renovacion" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <!-- ================= GRUPO WHATSAPP (comparador) ================= -->
+            <div id="sec-grupo-wsp" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Grupo de WhatsApp</h1>
+                    <p class="text-xs text-slate-500">Compará quién de tus clientes está (o no) en el grupo del gimnasio, e invitá a los que faltan.</p>
+                </div>
+
+                <!-- Link de invitación del grupo -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase"><i class="fa-solid fa-link text-green-400"></i> Link de invitación del grupo</h3>
+                    <p class="text-[11px] text-slate-500">Pegá acá el link del grupo (en WhatsApp: Datos del grupo → "Invitar con enlace" → Copiar). Se guarda en este equipo y se usa en el botón "Invitar".</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <input type="text" id="grupo-wsp-link" placeholder="https://chat.whatsapp.com/..." class="flex-1 min-w-[220px] bg-black border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-green-500">
+                        <button onclick="guardarLinkGrupo()" class="bg-green-500 hover:bg-green-400 text-black font-black px-4 py-2.5 rounded-2xl text-xs">Guardar link</button>
+                    </div>
+                    <p id="grupo-wsp-link-aviso" class="text-[10px] hidden"></p>
+                </div>
+
+                <!-- Comparador -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase"><i class="fa-solid fa-list-check text-cyan-400"></i> Pegá los números del grupo</h3>
+                    <p class="text-[11px] text-slate-500">En WhatsApp Web: abrí el grupo → Datos del grupo → mirá los miembros y copiá sus números acá (uno por línea, o separados por coma). No importa el formato (+56, espacios, etc.).</p>
+                    <textarea id="grupo-wsp-numeros" rows="5" placeholder="+56 9 1234 5678&#10;56987654321&#10;9 1111 2222" class="w-full bg-black border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-cyan-500"></textarea>
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="compararGrupoWhatsApp()" class="bg-cyan-500 hover:bg-cyan-400 text-black font-black px-5 py-2.5 rounded-2xl text-xs"><i class="fa-solid fa-magnifying-glass-chart"></i> Comparar con mis clientes</button>
+                        <button onclick="document.getElementById('grupo-wsp-numeros').value='';" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-2xl text-xs font-bold">Limpiar</button>
+                    </div>
+                </div>
+
+                <!-- Resumen -->
+                <div id="grupo-wsp-resumen" class="grid grid-cols-2 sm:grid-cols-4 gap-4 hidden">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">✅ En el grupo</span><div class="text-xl font-black text-emerald-400" id="grupo-cnt-en">0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">❌ Faltan (con tel)</span><div class="text-xl font-black text-rose-400" id="grupo-cnt-falta">0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">⚠️ Sin teléfono</span><div class="text-xl font-black text-amber-400" id="grupo-cnt-sintel">0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">ℹ️ Números no-cliente</span><div class="text-xl font-black text-slate-300" id="grupo-cnt-nocliente">0</div></div>
+                </div>
+
+                <!-- Listas de resultado -->
+                <div id="grupo-wsp-resultado" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+
+                <!-- Rellenar teléfonos faltantes cruzando por nombre -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase"><i class="fa-solid fa-address-book text-purple-400"></i> Rellenar teléfonos faltantes (por nombre)</h3>
+                    <p class="text-[11px] text-slate-500">Pegá el CSV del grupo (con nombre y número). Cruzo por <b>nombre y apellido</b> con tus clientes que <b>no tienen teléfono</b> y te propongo el número para completar su ficha. Revisás y aplicás solo los que quieras. No toca a los que ya tienen teléfono.</p>
+                    <textarea id="grupo-wsp-csv" rows="5" placeholder="56912345678;Juan Perez Gym&#10;56987654321;Ana Torres Gym" class="w-full bg-black border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-purple-500"></textarea>
+                    <button onclick="cruzarNombresGrupo()" class="bg-purple-500 hover:bg-purple-400 text-black font-black px-5 py-2.5 rounded-2xl text-xs"><i class="fa-solid fa-wand-magic-sparkles"></i> Buscar coincidencias por nombre</button>
+                    <div id="grupo-wsp-match-resultado" class="space-y-3"></div>
+                </div>
+            </div>
+
+            <!-- ================= PROTOCOLO DE BIENVENIDA ================= -->
+            <div id="sec-protocolo" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Protocolo de Bienvenida</h1>
+                    <p class="text-xs text-slate-500">Guía rápida para el staff al recibir a un cliente nuevo. No es un instructivo detallado: son los pasos clave que <b>nunca</b> deben saltarse.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Paso 1 -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 font-black flex items-center justify-center">1</span>
+                            <h3 class="text-sm font-bold text-white">👋 Bienvenida</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">Recibe al cliente, preséntate y muéstrale las instalaciones (sala de máquinas, camarines, lockers, dispensador de agua). Explícale los horarios y cómo funciona el ingreso por torniquete/QR.</p>
+                    </div>
+                    <!-- Paso 2 -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center">2</span>
+                            <h3 class="text-sm font-bold text-white">📄 Contrato</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">Registra al cliente en el sistema y haz que <b>lea y firme el contrato digital</b> (pestaña "Contrato" en su expediente). Sin firma no puede empezar a entrenar. Recuerda cobrar la matrícula ($5.000 / $10.000).</p>
+                    </div>
+                    <!-- Paso 3 -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 font-black flex items-center justify-center">3</span>
+                            <h3 class="text-sm font-bold text-white">🏋️ Protocolos del gym</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">Explícale las reglas básicas de uso: ropa y calzado deportivo, toalla y botella de agua, higienizar las máquinas después de usarlas, ordenar mancuernas y discos, no dejar mochilas en el piso y usar los lockers.</p>
+                    </div>
+                    <!-- Paso 4 -->
+                    <div class="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-full bg-pink-500/20 text-pink-400 font-black flex items-center justify-center">4</span>
+                            <h3 class="text-sm font-bold text-white">🤝 Protocolo de convivencia</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">Deja claro que aquí prima el <b>respeto y la tolerancia</b>: nada de conductas agresivas, discriminatorias ni grabar/fotografiar a otros sin permiso. Se debe cuidar el material y el aseo del lugar. Cualquier incomodidad se informa al staff.</p>
+                    </div>
+                    <!-- Paso 5 -->
+                    <div class="bg-slate-900/60 border border-rose-500/30 rounded-3xl p-5 space-y-2 md:col-span-2">
+                        <div class="flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-full bg-rose-500/20 text-rose-400 font-black flex items-center justify-center">5</span>
+                            <h3 class="text-sm font-bold text-white">🩺 Salud: enfermedades preexistentes</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed"><b>Pregunta siempre</b> si el cliente tiene alguna enfermedad o condición preexistente (problemas cardíacos, hipertensión, diabetes, obesidad, embarazo, problemas renales, medicamentos que lo restrinjan, lesiones, etc.). Debe declararlo antes de empezar. Registra la información en <b>Observaciones</b> del expediente y, si corresponde, deriva a Kinesiología. Recuérdale que al firmar el contrato acepta la Declaración Jurada del Estado de Salud.</p>
+                    </div>
+                </div>
+
+                <div class="bg-sky-500/5 border border-sky-500/20 rounded-2xl p-4 text-[11px] text-sky-300/80">
+                    <i class="fa-solid fa-circle-info"></i> Este protocolo es una referencia rápida para el equipo. Complétalo en orden con cada cliente nuevo para asegurar una buena experiencia desde el primer día.
+                </div>
+            </div>
+
+            <!-- ================= 7. FINANZAS & MÉTRICAS ================= -->
+            <div id="sec-metricas" class="space-y-6 hidden">
+                <h1 class="text-2xl font-black text-white tracking-tight">Finanzas, Rachas & Comparativa</h1>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium" id="metric-ingresos-label">Ingresos del Mes</span>
+                        <div class="text-xl font-black text-white" id="metric-ingresos">$0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Rachas Activas</span>
+                        <div class="text-xl font-black text-emerald-400" id="metric-rachas-ganadas">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Rachas Reseteadas (histórico)</span>
+                        <div class="text-xl font-black text-rose-400" id="metric-rachas-perdidas">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Finalistas Ruleta (meta ✓)</span>
+                        <div class="text-xl font-black text-amber-400" id="metric-rachas-completas">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">vs. Mes Anterior</span>
+                        <div class="text-xl font-black text-cyan-400" id="metric-vs-anterior">—</div>
+                        <span class="text-[9px] text-slate-600" id="metric-vs-anterior-detalle"></span>
+                    </div>
+                </div>
+
+                <!-- Ingresos del mes por método de pago -->
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-3">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase">Ingresos del mes por método de pago</h3>
+                    <div id="metric-por-metodo" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                </div>
+
+                <!-- ===== DETALLE MENSUAL NAVEGABLE ===== -->
+                <div class="flex items-center justify-between flex-wrap gap-2 pt-2">
+                    <h2 class="text-lg font-black text-white tracking-tight">Detalle mensual</h2>
+                    <div class="flex items-center gap-2">
+                        <button onclick="cambiarMesFinanzas(-1)" class="bg-slate-800 hover:bg-slate-700 text-white w-9 h-9 rounded-xl font-black" title="Mes anterior"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="fin-mes-label" class="text-sm font-black text-white min-w-[150px] text-center">—</span>
+                        <button onclick="cambiarMesFinanzas(1)" class="bg-slate-800 hover:bg-slate-700 text-white w-9 h-9 rounded-xl font-black" title="Mes siguiente"><i class="fa-solid fa-chevron-right"></i></button>
+                        <button onclick="irMesActualFinanzas()" class="bg-slate-800 hover:bg-slate-700 text-cyan-400 px-3 h-9 rounded-xl text-xs font-bold" title="Volver al mes actual">Hoy</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">Ingresos del mes</span><div class="text-lg font-black text-emerald-400" id="fin-mes-ingresos">$0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">vs. mes anterior</span><div class="text-lg font-black text-cyan-400" id="fin-mes-vs">—</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">N° de pagos</span><div class="text-lg font-black text-white" id="fin-mes-pagos">0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">Clientes que pagaron</span><div class="text-lg font-black text-white" id="fin-mes-clientes">0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">Ticket promedio</span><div class="text-lg font-black text-white" id="fin-mes-ticket">$0</div></div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1"><span class="text-[10px] text-slate-400 font-medium">Altas del mes</span><div class="text-lg font-black text-purple-400" id="fin-mes-altas">0</div></div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2 bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-3">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Ingresos del mes por método de pago</h3>
+                        <div id="fin-mes-metodo" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                        <p class="text-[10px] text-slate-500">Incluye <span id="fin-mes-matriculas" class="text-slate-300 font-bold">$0</span> en matrículas de ingreso.</p>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Resumen mes anterior</h3>
+                        <div id="fin-prev-label" class="text-[11px] text-slate-500 font-bold">—</div>
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">Ingresos</span><span class="text-emerald-400 font-black" id="fin-prev-ingresos">$0</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">N° de pagos</span><span class="text-white font-bold" id="fin-prev-pagos">0</span></div>
+                            <div class="flex justify-between text-xs"><span class="text-slate-400">Altas</span><span class="text-purple-400 font-bold" id="fin-prev-altas">0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl h-72 space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Crecimiento de Ingresos — Este Año vs Año Pasado</h3>
+                        <div class="h-56"><canvas id="chartFinanzas"></canvas></div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl h-72 space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Distribución de Planes Activos</h3>
+                        <div class="h-56"><canvas id="chartPlanes"></canvas></div>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-600">Ambos gráficos usan datos reales calculados desde los pagos y planes registrados en tu base de datos.</p>
+
+                <!-- ===== RETENCIÓN DE CLIENTES ===== -->
+                <h2 class="text-lg font-black text-white tracking-tight pt-2">Retención de clientes</h2>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Total clientes</span>
+                        <div class="text-xl font-black text-white" id="ret-total">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Al día</span>
+                        <div class="text-xl font-black text-emerald-400" id="ret-aldia">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Pendientes</span>
+                        <div class="text-xl font-black text-amber-400" id="ret-pendiente">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Vencidos</span>
+                        <div class="text-xl font-black text-rose-400" id="ret-vencido">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Congelados</span>
+                        <div class="text-xl font-black text-sky-400" id="ret-congelado">0</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Altas del mes</span>
+                        <div class="text-xl font-black text-cyan-400" id="ret-altas">0</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1 bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Estado de la cartera</h3>
+                        <div class="h-56"><canvas id="chartRetencion"></canvas></div>
+                    </div>
+                    <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-1">
+                            <span class="text-[10px] text-slate-400 font-medium">Tasa de retención</span>
+                            <div class="text-3xl font-black text-emerald-400" id="ret-tasa">0%</div>
+                            <span class="text-[9px] text-slate-600">activos (al día + pendientes + congelados) sobre el total</span>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-1">
+                            <span class="text-[10px] text-slate-400 font-medium">Tasa de bajas (churn)</span>
+                            <div class="text-3xl font-black text-rose-400" id="ret-churn">0%</div>
+                            <span class="text-[9px] text-slate-600">vencidos sobre el total de clientes</span>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-600">"Altas del mes" cuenta clientes con fecha de ingreso en el mes actual. Los importados sin fecha de ingreso no se cuentan aquí.</p>
+            </div>
+
+            <!-- ================= ANALÍTICA & DATOS ================= -->
+            <div id="sec-analitica" class="space-y-6 hidden">
+                <div>
+                    <h1 class="text-2xl font-black text-white tracking-tight">Analítica & Datos del Negocio</h1>
+                    <p class="text-xs text-slate-500">Estimaciones y patrones calculados desde tus pagos y clientes reales.</p>
+                </div>
+
+                <!-- Tarjetas de estimación -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Estimativo del Mes (esperado)</span>
+                        <div class="text-xl font-black text-cyan-400" id="an-estimativo">$0</div>
+                        <span class="text-[9px] text-slate-600" id="an-estimativo-detalle"></span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Ingreso Real del Mes</span>
+                        <div class="text-xl font-black text-emerald-400" id="an-real">$0</div>
+                        <span class="text-[9px] text-slate-600" id="an-cumplimiento"></span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Ticket Promedio por Cliente</span>
+                        <div class="text-xl font-black text-white" id="an-ticket">$0</div>
+                        <span class="text-[9px] text-slate-600" id="an-clientes-activos"></span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Mejor Mes Histórico</span>
+                        <div class="text-xl font-black text-amber-400" id="an-mejor-mes">—</div>
+                        <span class="text-[9px] text-slate-600" id="an-mejor-mes-monto"></span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Días fuertes de pago -->
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-2">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Días más fuertes de pago (ingresos por día de la semana)</h3>
+                        <div class="h-56"><canvas id="chartDiasPago"></canvas></div>
+                    </div>
+                    <!-- Métodos de pago -->
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-3xl space-y-3">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">Métodos de pago más usados</h3>
+                        <div id="an-metodos" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <!-- Clientes en riesgo -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden">
+                    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                        <span class="font-bold text-white text-xs uppercase tracking-wider">⚠️ Clientes en riesgo de perder racha</span>
+                        <span class="text-[10px] text-slate-500">Vencen pronto y tienen mucha racha que perder</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-950 text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
+                                <tr>
+                                    <th class="p-4">Cliente</th>
+                                    <th class="p-4">Racha en juego</th>
+                                    <th class="p-4">Vence</th>
+                                    <th class="p-4">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="an-riesgo-body" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Análisis de pérdida de rachas -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase">📉 Pérdida de rachas (historial)</h3>
+                        <span id="an-racha-aviso" class="text-[10px] text-amber-400"></span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="bg-black/40 p-4 rounded-2xl space-y-1">
+                            <span class="text-[10px] text-slate-500">Rachas perdidas (total)</span>
+                            <div class="text-xl font-black text-rose-400" id="an-racha-total">0</div>
+                        </div>
+                        <div class="bg-black/40 p-4 rounded-2xl space-y-1">
+                            <span class="text-[10px] text-slate-500">Mes promedio al perderla</span>
+                            <div class="text-xl font-black text-amber-400" id="an-racha-promedio">—</div>
+                            <span class="text-[9px] text-slate-600">en qué mes de racha suelen abandonar</span>
+                        </div>
+                        <div class="bg-black/40 p-4 rounded-2xl space-y-1">
+                            <span class="text-[10px] text-slate-500">Atraso promedio de pago</span>
+                            <div class="text-xl font-black text-white" id="an-racha-atraso">—</div>
+                            <span class="text-[9px] text-slate-600">días de atraso al perder racha</span>
+                        </div>
+                    </div>
+                    <div id="an-racha-motivos" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- ================= 8. PERSONAL & PERMISOS ================= -->
+            <div id="sec-personal" class="space-y-6 hidden">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h1 class="text-2xl font-black text-white tracking-tight">Gestión de Personal & Cargos Limitados</h1>
+                        <p class="text-xs text-slate-500">Personal del gimnasio (tabla "staff"). Para que además puedan iniciar sesión, crea su usuario en Supabase → Authentication.</p>
+                    </div>
+                    <button onclick="abrirModalStaff()" class="bg-rose-500 hover:bg-rose-400 text-white font-black px-4 py-2 rounded-xl text-xs shadow-lg shadow-rose-500/20">
+                        <i class="fa-solid fa-user-plus"></i> Agregar Staff
+                    </button>
+                </div>
+
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                    <input type="text" id="filtro-staff" oninput="renderizarStaff()" placeholder="Buscar staff por nombre o rol..." class="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-11 pr-4 text-white text-xs outline-none focus:border-rose-500">
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-950 text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
+                            <tr>
+                                <th class="p-4">Entrenador / Staff</th>
+                                <th class="p-4">Cargo / Rol</th>
+                                <th class="p-4">Permisos Habilitados</th>
+                                <th class="p-4 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-staff-body" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL AGREGAR CLIENTE -->
+    <div id="modal-nuevo-cliente" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-3xl p-6 space-y-5 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white">Registrar Nuevo Cliente</h3>
+                <button onclick="cerrarModalNuevoAlumno()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div><label class="block text-slate-400 mb-1">Nombre</label><input type="text" id="form-nombre" placeholder="Ej. Juan" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Apellido</label><input type="text" id="form-apellido" placeholder="Ej. Díaz" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Correo Electrónico</label><input type="email" id="form-correo" placeholder="juan@ejemplo.com" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Teléfono (WhatsApp)</label><input type="text" id="form-telefono" placeholder="+56912345678" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Teléfono de Emergencia</label><input type="text" id="form-telefono-emergencia" placeholder="+56900000000" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Fecha de Cumpleaños</label><input type="date" id="form-cumpleanos" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Género</label>
+                    <select id="form-genero" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                        <option value="">Sin especificar</option>
+                        <option value="M">Hombre</option>
+                        <option value="F">Mujer</option>
+                    </select>
+                </div>
+                <div><label class="block text-slate-400 mb-1">Plan a Contratar</label><select id="form-plan" onchange="calcularPrecioFormulario()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold outline-none"></select></div>
+                <div><label class="block text-slate-400 mb-1">Fecha de Inicio del Plan</label><input type="date" id="form-fecha-inicio" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Meses Racha Inicial (1-20)</label><input type="number" id="form-racha" min="1" max="20" value="1" onchange="calcularPrecioFormulario()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-amber-400 font-bold outline-none"></div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Personas Referidas (1 a 4)</label>
+                    <select id="form-referidos" onchange="calcularPrecioFormulario()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-cyan-400 font-bold outline-none">
+                        <option value="0">Ninguna (0)</option>
+                        <option value="1">1 Persona (-$2.000)</option>
+                        <option value="2">2 Personas (-$5.000)</option>
+                        <option value="3">3 Personas (-$10.000)</option>
+                        <option value="4">4 Personas (-$20.000)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Matrícula (ingreso al gym)</label>
+                    <select id="form-matricula" onchange="calcularPrecioFormulario()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-orange-400 font-bold outline-none">
+                        <option value="0">Sin matrícula (ya es cliente)</option>
+                        <option value="5000">Matrícula $5.000</option>
+                        <option value="10000">Matrícula $10.000</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Método de pago</label>
+                    <select id="form-metodo" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                        <option value="Débito">Débito</option>
+                        <option value="Crédito">Crédito</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-black/60 p-4 rounded-2xl border border-slate-800 text-xs space-y-1">
+                <div class="flex justify-between text-slate-400"><span>Precio Base Plan:</span><span id="form-calc-base">$0</span></div>
+                <div class="flex justify-between text-amber-400"><span>Descuento por Racha (Mes 5, 10, 15 o 20):</span><span id="form-calc-desc-racha">-$0</span></div>
+                <div class="flex justify-between text-cyan-400"><span>Descuento por Referidos (1-4):</span><span id="form-calc-desc-referidos">-$0</span></div>
+                <div class="flex justify-between text-orange-400"><span>Matrícula (ingreso):</span><span id="form-calc-matricula">+$0</span></div>
+                <div class="flex justify-between text-white font-black text-sm border-t border-slate-800 pt-1"><span>Monto Final a Cobrar:</span><span id="form-calc-total" class="text-emerald-400">$0</span></div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalNuevoAlumno()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button onclick="guardarNuevoAlumno()" class="px-5 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black">Guardar Cliente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EXPEDIENTE COMPLETO & HISTORIAL (PAGOS, MEDIDAS, PRS) -->
+    <div id="modal-editar-cliente" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-3xl p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white flex items-center gap-2"><i class="fa-solid fa-id-card text-emerald-400"></i> Expediente Completo & Historial Editable</h3>
+                <button onclick="cerrarModalEditarCliente()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="flex gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+                <button onclick="cambiarTabExpediente('tab-datos')" id="btn-tab-datos" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500 text-black">Datos & Cumpleaños</button>
+                <button onclick="cambiarTabExpediente('tab-pagos')" id="btn-tab-pagos" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white">Historial de Pagos (Editable)</button>
+                <button onclick="cambiarTabExpediente('tab-medidas')" id="btn-tab-medidas" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white">Historial Medidas (Editable)</button>
+                <button onclick="cambiarTabExpediente('tab-prs')" id="btn-tab-prs" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white">Récords (PRs) & Progresos</button>
+                <button onclick="cambiarTabExpediente('tab-salud')" id="btn-tab-salud" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white">🩺 Salud (Nutri/Kine)</button>
+                <button onclick="cambiarTabExpediente('tab-contrato')" id="btn-tab-contrato" class="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white">📄 Contrato</button>
+            </div>
+
+            <input type="hidden" id="edit-id">
+
+            <!-- TAB 1: DATOS -->
+            <div id="tab-datos" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div><label class="block text-slate-400 mb-1">Nombre</label><input type="text" id="edit-nombre" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-slate-400 mb-1">Apellido</label><input type="text" id="edit-apellido" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-slate-400 mb-1">Fecha Cumpleaños</label><input type="date" id="edit-cumpleanos" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-purple-400 font-bold"></div>
+                    <div><label class="block text-slate-400 mb-1">Género</label>
+                        <select id="edit-genero" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="">Sin especificar</option>
+                            <option value="M">Hombre</option>
+                            <option value="F">Mujer</option>
+                        </select>
+                    </div>
+                    <div><label class="block text-slate-400 mb-1">Correo</label><input type="email" id="edit-correo" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-slate-400 mb-1">Teléfono</label><input type="text" id="edit-telefono" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-slate-400 mb-1">Plan Actual</label><select id="edit-plan" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold"></select></div>
+                    <div><label class="block text-slate-400 mb-1">Meses Racha</label><input type="number" id="edit-racha" min="1" max="20" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-amber-400 font-bold"></div>
+                    <div><label class="block text-slate-400 mb-1">Vencimiento</label><input type="date" id="edit-vencimiento" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    <div><label class="block text-slate-400 mb-1">Estado</label>
+                        <select id="edit-estado" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold">
+                            <option value="Al día">Al día</option><option value="Pendiente">Pendiente</option><option value="Vencido">Vencido</option><option value="Congelado">❄️ Congelado</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-500"><i class="fa-solid fa-user-pen"></i> Registrado por: <span id="edit-registrado-por" class="text-slate-400 font-bold">—</span></p>
+
+                <!-- Observaciones internas -->
+                <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <h4 class="text-sm font-bold text-amber-400"><i class="fa-solid fa-note-sticky"></i> Observaciones</h4>
+                        <span class="text-[10px] text-slate-500">Datos de salud (enfermedades, medicamentos, controles) → pestaña 🩺 Salud</span>
+                    </div>
+                    <textarea id="edit-observaciones" rows="3" placeholder="Notas internas del cliente: lesiones, acuerdos, recordatorios, estado de controles, etc." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs outline-none"></textarea>
+                </div>
+
+                <!-- Contactos de emergencia -->
+                <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <h4 class="text-sm font-bold text-rose-400"><i class="fa-solid fa-kit-medical"></i> Contactos de emergencia</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div><label class="block text-slate-400 mb-1">Contacto 1 — Nombre</label><input type="text" id="edit-emergencia1-nombre" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                        <div><label class="block text-slate-400 mb-1">Contacto 1 — Teléfono</label><input type="text" id="edit-telefono-emergencia" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                        <div><label class="block text-slate-400 mb-1">Contacto 2 — Nombre</label><input type="text" id="edit-emergencia2-nombre" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                        <div><label class="block text-slate-400 mb-1">Contacto 2 — Teléfono</label><input type="text" id="edit-emergencia2-telefono" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white"></div>
+                    </div>
+                    <div><label class="block text-slate-400 mb-1 text-xs">¿Dónde llevarlo/a en caso de emergencia? (clínica / hospital / indicaciones)</label><input type="text" id="edit-emergencia-lugar" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs"></div>
+                </div>
+            </div>
+
+            <!-- TAB 2: HISTORIAL PAGOS EDITABLE -->
+            <div id="tab-pagos" class="space-y-4 hidden">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-slate-400">Registra un pago con plan, matrícula y descuentos, o edita cada transacción en la tabla.</p>
+                    <button onclick="abrirModalRegistrarPago()" class="bg-emerald-500 hover:bg-emerald-400 text-black px-3 py-1.5 rounded-xl text-xs font-black"><i class="fa-solid fa-cash-register"></i> Registrar pago</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-black text-slate-500 text-[10px] uppercase">
+                            <tr><th class="p-2">Fecha</th><th class="p-2">Concepto / Plan</th><th class="p-2">Monto ($)</th><th class="p-2">Método de Pago</th><th class="p-2 text-right">Acción</th></tr>
+                        </thead>
+                        <tbody id="lista-historial-pagos-editable" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 3: MEDIDAS EDITABLES (INCLUYE GLÚTEOS) -->
+            <div id="tab-medidas" class="space-y-4 hidden">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-slate-400">Control detallado de medidas antropométricas con edición completa por fecha.</p>
+                    <button onclick="agregarMedidaAntropometrica()" class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-xl text-xs font-bold">+ Nueva Medida</button>
+                </div>
+                <div id="medidas-grafico-wrap" class="bg-black/40 border border-slate-800 rounded-2xl p-4 hidden">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">Evolución (peso kg + medidas cm)</h4>
+                    <div class="h-56"><canvas id="chartMedidasProgreso"></canvas></div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-black text-slate-500 text-[10px] uppercase">
+                            <tr>
+                                <th class="p-2">Fecha</th>
+                                <th class="p-2">Peso (kg)</th>
+                                <th class="p-2">Pectoral (cm)</th>
+                                <th class="p-2">Brazo Izq (cm)</th>
+                                <th class="p-2">Brazo Der (cm)</th>
+                                <th class="p-2">Cintura (cm)</th>
+                                <th class="p-2">Cadera (cm)</th>
+                                <th class="p-2">Pierna Izq (cm)</th>
+                                <th class="p-2">Pierna Der (cm)</th>
+                                <th class="p-2">Glúteos (cm)</th>
+                                <th class="p-2">Archivo</th>
+                                <th class="p-2 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lista-medidas-editable" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 4: PRS & HISTORIAL CONECTADO A TV -->
+            <div id="tab-prs" class="space-y-4 hidden">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-slate-400">Récords personales (PRs) con histórico de progreso para visualización en Leaderboard TV.</p>
+                    <button onclick="agregarNuevoPRCliente()" class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-xl text-xs font-bold">+ Agregar Registro PR</button>
+                </div>
+                <div id="prs-grafico-wrap" class="bg-black/40 border border-slate-800 rounded-2xl p-4 hidden">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase mb-2">Evolución de récords (por ejercicio)</h4>
+                    <div class="h-56"><canvas id="chartPRsProgreso"></canvas></div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-black text-slate-500 text-[10px] uppercase">
+                            <tr>
+                                <th class="p-2">Ejercicio</th>
+                                <th class="p-2">Marca / Peso (KG)</th>
+                                <th class="p-2">Fecha Registro</th>
+                                <th class="p-2 text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lista-prs-historial" class="divide-y divide-slate-800"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 5: SALUD (NUTRICIÓN + KINESIOLOGÍA) -->
+            <div id="tab-salud" class="space-y-6 hidden">
+                <p id="salud-aviso" class="text-[11px] text-amber-400 hidden">⚠️ Corre <b>migracion_salud.sql</b> en Supabase para activar esta sección.</p>
+
+                <!-- Ficha de salud del cliente -->
+                <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <h4 class="text-sm font-bold text-rose-400"><i class="fa-solid fa-notes-medical"></i> Ficha de salud</h4>
+                        <label class="flex items-center gap-2 text-xs text-slate-300 bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-1.5"><input type="checkbox" id="edit-salud-controles" class="accent-emerald-500"> Controles médicos al día</label>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Enfermedades / condiciones preexistentes</label>
+                            <textarea id="edit-salud-enfermedades" rows="2" placeholder="Ej: hipertensión, diabetes, asma, problemas cardíacos..." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Medicamentos que toma</label>
+                            <textarea id="edit-salud-medicamentos" rows="2" placeholder="Nombre, dosis y frecuencia..." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Alergias</label>
+                            <textarea id="edit-salud-alergias" rows="2" placeholder="Medicamentos, alimentos, otros..." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Lesiones / cirugías previas</label>
+                            <textarea id="edit-salud-lesiones" rows="2" placeholder="Rodilla operada, hernia, esguinces..." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Grupo sanguíneo</label>
+                            <input type="text" id="edit-salud-grupo" placeholder="Ej: O+" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Notas médicas adicionales</label>
+                            <textarea id="edit-salud-notas" rows="2" placeholder="Cualquier otra información relevante..." class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></textarea>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-500"><i class="fa-solid fa-circle-info"></i> Estos datos se guardan con el botón "Guardar Todo el Expediente".</p>
+                </div>
+
+                <!-- Nutrición -->
+                <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-sm font-bold text-emerald-400"><i class="fa-solid fa-apple-whole"></i> Nutrición</h4>
+                        <button onclick="agregarNutriCliente()" class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-xl text-xs font-bold">+ Nuevo control</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-black text-slate-500 text-[10px] uppercase">
+                                <tr>
+                                    <th class="p-2">Fecha</th>
+                                    <th class="p-2">Objetivo</th>
+                                    <th class="p-2">Peso meta (kg)</th>
+                                    <th class="p-2">Notas / Plan</th>
+                                    <th class="p-2">Próximo control</th>
+                                    <th class="p-2">Pauta / Archivo</th>
+                                    <th class="p-2 text-right">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-nutri" class="divide-y divide-slate-800"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Kinesiología -->
+                <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-sm font-bold text-cyan-400"><i class="fa-solid fa-bone"></i> Kinesiología</h4>
+                        <button onclick="agregarKineCliente()" class="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-3 py-1 rounded-xl text-xs font-bold">+ Nueva sesión</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-black text-slate-500 text-[10px] uppercase">
+                                <tr>
+                                    <th class="p-2">Fecha</th>
+                                    <th class="p-2">Zona / Lesión</th>
+                                    <th class="p-2">Estado</th>
+                                    <th class="p-2">Indicaciones / Rehab</th>
+                                    <th class="p-2">Próximo control</th>
+                                    <th class="p-2">Informe / Archivo</th>
+                                    <th class="p-2 text-right">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-kine" class="divide-y divide-slate-800"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: CONTRATO DEL GIMNASIO (FIRMA DIGITAL) -->
+            <div id="tab-contrato" class="space-y-4 hidden">
+                <!-- Estado de firma -->
+                <div id="contrato-estado-firmado" class="hidden bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
+                    <div class="text-xs">
+                        <span class="text-emerald-400 font-bold"><i class="fa-solid fa-circle-check"></i> Contrato firmado</span>
+                        <span id="contrato-info" class="text-slate-400 block mt-0.5"></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <img id="contrato-firma-img" alt="Firma" class="h-14 bg-white rounded-lg p-1">
+                        <button onclick="descargarContratoFirmado()" class="bg-blue-500 hover:bg-blue-400 text-white font-black px-3 py-2 rounded-xl text-[11px] whitespace-nowrap"><i class="fa-solid fa-file-arrow-down"></i> Descargar / Enviar contrato</button>
+                    </div>
+                </div>
+
+                <!-- Texto del contrato: documentos reales del gimnasio -->
+                <div id="contrato-texto-legal" class="bg-black/40 border border-slate-800 rounded-2xl p-4 max-h-80 overflow-y-auto text-[11px] text-slate-300 leading-relaxed space-y-2">
+                    <p class="text-slate-400 text-center font-bold">GIMNASIO JAVIER IGNACIO TORRES DIAZ E.I.R.L. (JavoFit)</p>
+                    <p class="text-slate-500 text-center">Al firmar, el/la cliente declara haber leído y aceptar íntegramente los siguientes documentos:</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">1. REGLAMENTO DE USO DE LAS INSTALACIONES</h3>
+                    <p class="text-white font-bold">Condiciones básicas para la inscripción</p>
+                    <p>Edad mínima 14 años. Entre 13 y 18 años se requiere permiso escrito de los padres o cuidador titular (indicando parentesco) con certificado de nacimiento y fotocopia de cédula por ambos lados. Se debe poseer un estado de salud acorde a la práctica deportiva, avalado por certificado médico o, en su defecto, firmar la "Declaración Jurada del Estado de Salud". Toda persona con problemas cardiacos, obesidad, diabetes, embarazo, problemas renales, hipertensión y/o consumo de medicamentos que lo restrinjan deberá contar con autorización expresa de su médico.</p>
+                    <p class="text-white font-bold">Durante la estancia y uso de la sala de máquinas</p>
+                    <p>Usar solo las dependencias correspondientes (camarines, baños y sala de máquinas). Guardar pertenencias en un locker; la empresa no responde por objetos de valor. No dejar mochilas en el piso. Usar la maquinaria como indiquen los entrenadores. Asistir con ropa y calzado deportivo, botella de agua y toalla para higienizar las máquinas. Mantener el orden de mancuernas, balones, barras y colchonetas. Prohibido descansar en las máquinas.</p>
+                    <p class="text-white font-bold">Acciones no permitidas</p>
+                    <p>Ingresar o usar la sala bajo efectos de alcohol, drogas o estupefacientes; asistir descalzo, con sandalias o ropa no deportiva (jeans, camisas); gritar o mantener volúmenes altos; comercializar productos; conductas contra la moral y buenas costumbres; entrenar sin polera; soltar implementos desde altura; botar basura fuera de lugar; grabar o fotografiar a otros sin su consentimiento; dejar cosas permanentes en casilleros; conductas agresivas, discriminatorias o intolerantes.</p>
+                    <p class="text-white font-bold">Causales de expulsión</p>
+                    <p>Conductas contra la moral; relaciones sexuales en el recinto; agresión verbal o física; destrucción deliberada de maquinaria o instalaciones; no pagar el deterioro intencional; porte de armas; robo de artículos. En daños de consideración, hurto o agresión se realizará la denuncia a las autoridades pertinentes.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">2. MANUAL DE CONVIVENCIA Y PARTICIPACIÓN</h3>
+                    <p>Se busca una convivencia sana en un ambiente seguro, libre de discriminación y en el que siempre prime el respeto. Cada beneficiario debe: mantener respeto hacia sus pares y hacia sí mismo; tolerancia hacia las diversidades (sexual, económica, etaria, de género, religiosa, etc.); velar por la seguridad propia y de los demás; seguir las reglas de cada entrenador; e informar cualquier incomodidad. Presentación personal: ropa deportiva adecuada, sin torso desnudo ni semidesnudo, con aseo personal. Del material e instalaciones: usarlos correctamente evitando su deterioro; ante deterioro intencional, el beneficiario debe restituir el bien dañado; mantener el aseo del lugar.</p>
+                    <p class="text-white font-bold">Situaciones prohibidas</p>
+                    <p>Asistir con mascotas; portar armas cortopunzantes o contundentes, químicos peligrosos, drogas o alcohol; conductas discriminatorias o agresivas.</p>
+                    <p class="text-white font-bold">Situaciones desvinculantes de la institución</p>
+                    <p>Agredir físicamente a un integrante de la comunidad; conductas discriminatorias; difamación (injurias, calumnias); deteriorar intencionalmente el material y no pagar su restitución; deteriorar el entorno; sustraer artículos de otros miembros.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">3. DECLARACIÓN JURADA DEL ESTADO DE SALUD</h3>
+                    <p>Declaro que: (1) se me ha solicitado un informe médico que acredite mi estado de salud para la práctica deportiva; (2) he decidido no entregar dicho certificado y me hago cargo de forma personal, autónoma y responsable de mi propio estado de salud; (3) conozco las exigencias y riesgos de la práctica deportiva y asumo la responsabilidad por mi estado de salud, eximiendo a la empresa de toda responsabilidad ante situaciones de riesgo físico, lesiones e incluso fallecimiento producto de la actividad, que no sea imputable a dolo o negligencia grave de la empresa; (4) carezco de contraindicación médica que impida la actividad; (5) eximo a la empresa de responsabilidad ante cualquier problema de salud derivado de mi práctica, asumiendo los gastos de traslado o asistencia médica en caso necesario.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">4. CARTA DE CONSENTIMIENTO INFORMADO</h3>
+                    <p>Declaro que: (1) se me ha informado en lenguaje comprensible sobre las características de la actividad y las condiciones físicas requeridas; (2) sobre los riesgos, la certificación de los entrenadores y las medidas de seguridad; (3) sobre el reconocimiento médico de aptitud; (4) he informado por escrito cualquier alergia o patología preexistente; (5) he entregado el nombre y teléfono de un contacto de emergencia; (6) conozco y acato la autoridad del staff; (7) me comprometo a no ingresar bajo efectos de drogas o alcohol, pudiendo el gimnasio denegar el acceso o terminar la membresía sin reembolso; (8) asumo voluntariamente los riesgos y eximo a la empresa de daños; la empresa presta primeros auxilios básicos pero no se responsabiliza por traslados; (9) asumo la responsabilidad económica por la ruptura o daño de máquinas por acción deliberada o negligente; (10) autorizo el uso de mi imagen/voz con fines publicitarios institucionales (si no lo acepto, debo informarlo a administración); (11) conozco y acato las condiciones de pago fijadas por la empresa; (12) conozco y acato las Normas de Uso y las Normas de Convivencia; (13) eximo a la empresa ante el uso indebido de la maquinaria que resulte en lesión o accidente.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">5. CÁMARAS DE SEGURIDAD Y CONTROL DE ACCESO</h3>
+                    <p>El/la cliente <b>acepta y autoriza expresamente</b>: (a) la existencia y funcionamiento de <b>cámaras de seguridad</b> dentro de las instalaciones, con fines de seguridad de las personas y los bienes; (b) que existe una <b>cámara enfocada a la zona de acceso (torniquete)</b> que lo/la capta al momento de ingresar mediante su código/QR, para control de acceso, verificación de identidad y registro de asistencia. Las grabaciones son de uso interno del gimnasio y podrán utilizarse como respaldo ante incidentes.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">6. POLÍTICA DE REEMBOLSO Y DEVOLUCIONES</h3>
+                    <p>El/la cliente podrá solicitar el <b>reembolso del plan contratado únicamente cuando NO haya hecho uso del servicio</b>, es decir, cuando no haya registrado ningún ingreso ni asistencia al gimnasio desde la fecha de pago. En tal caso, el gimnasio devolverá el monto pagado por el plan, pudiendo descontar la matrícula de ingreso y los gastos administrativos que correspondieren.</p>
+                    <p>Una vez que el/la cliente <b>haya utilizado el servicio</b> (registrando al menos un ingreso o asistencia), el plan se entenderá <b>iniciado y NO procederá reembolso alguno</b>, ni por el tiempo restante ni por la totalidad del plan, sin perjuicio de las opciones de congelamiento o suspensión temporal de la membresía que el gimnasio pudiera ofrecer a su criterio.</p>
+                    <p>Los planes y membresías son <b>estrictamente personales e intransferibles</b>: <b>no pueden ser cedidos, vendidos, prestados, regalados ni transferidos a otra persona</b> bajo ninguna circunstancia. El plan solo puede ser utilizado por el/la titular que lo contrató; el acceso mediante código/QR es personal y su uso por un tercero constituye una falta que faculta al gimnasio a suspender o terminar la membresía sin derecho a devolución.</p>
+
+                    <h3 class="text-xs font-black text-white mt-3 border-t border-slate-800 pt-2">7. PROTECCIÓN DE DATOS PERSONALES (LEY N° 21.719)</h3>
+                    <p>En cumplimiento de la <b>Ley N° 21.719, que regula la protección y el tratamiento de los datos personales</b>, GIMNASIO JAVIER IGNACIO TORRES DIAZ E.I.R.L. (JavoFit), en calidad de <b>responsable del tratamiento</b>, informa que los datos personales que el/la cliente entrega (nombre, RUT, teléfono, correo y contacto de emergencia), sus <b>datos sensibles de salud</b> (enfermedades, medicamentos, alergias, lesiones) y los datos captados por el <b>control de acceso (código/QR) y las cámaras de seguridad</b>, serán tratados bajo las siguientes condiciones:</p>
+                    <p><b>(a) Finalidad:</b> administrar la membresía, controlar el acceso y la asistencia, gestionar los pagos, resguardar la seguridad de las personas y los bienes, y contactar al cliente o a su contacto de emergencia cuando sea necesario.</p>
+                    <p><b>(b) Consentimiento:</b> el tratamiento de los datos sensibles de salud se realiza con el consentimiento libre, informado y específico del titular, otorgado al firmar este documento, y con la sola finalidad de seguridad y prevención en la práctica deportiva.</p>
+                    <p><b>(c) Confidencialidad y seguridad:</b> el gimnasio adopta medidas razonables para proteger los datos y no los cederá ni comunicará a terceros sin autorización, salvo obligación legal o requerimiento de autoridad competente.</p>
+                    <p><b>(d) Conservación:</b> los datos se conservarán mientras dure la relación contractual y por los plazos legales aplicables.</p>
+                    <p><b>(e) Derechos del titular:</b> el/la cliente podrá ejercer gratuitamente y en cualquier momento sus derechos de <b>acceso, rectificación, supresión (cancelación), oposición y portabilidad</b> de sus datos, así como <b>revocar el consentimiento</b> otorgado, dirigiéndose a la administración del gimnasio.</p>
+                    <p>El/la cliente declara haber sido informado/a de lo anterior y <b>autoriza el tratamiento de sus datos personales</b> en los términos señalados.</p>
+
+                    <p class="text-white font-bold mt-3 border-t border-slate-800 pt-2">Sanciones por incumplimiento</p>
+                    <p>El incumplimiento facultará al gimnasio para aplicar, según la gravedad: <b>(a) amonestación verbal o escrita</b>, <b>(b) suspensión temporal</b>, <b>(c) retiro inmediato del establecimiento</b> y/o <b>(d) término definitivo de la membresía sin derecho a devolución</b>. Las conductas graves podrán ser denunciadas a la autoridad competente.</p>
+
+                    <p class="text-slate-500 mt-3 border-t border-slate-800 pt-2 italic">La firma electrónica de este documento constituye la aceptación total de los documentos y cláusulas anteriores, con el mismo valor que una firma manuscrita.</p>
+                </div>
+
+                <!-- Firma -->
+                <div class="space-y-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 text-xs">Nombre completo de quien firma</label>
+                            <input type="text" id="contrato-nombre-input" placeholder="Nombre y apellido" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-xs">RUT o Pasaporte</label>
+                            <input type="text" id="contrato-rut-input" placeholder="12.345.678-9" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs outline-none">
+                        </div>
+                    </div>
+                    <label class="block text-slate-400 text-xs mt-2">Firma (dibuja con el mouse o el dedo)</label>
+                    <canvas id="contrato-canvas" class="w-full bg-white rounded-xl border border-slate-700 touch-none" height="160"></canvas>
+                    <div class="flex justify-between gap-2">
+                        <button onclick="limpiarFirma()" class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+                        <button onclick="guardarContratoFirma()" class="px-4 py-1.5 rounded-xl bg-emerald-500 text-black text-xs font-black"><i class="fa-solid fa-signature"></i> Aceptar y firmar contrato</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalEditarCliente()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button onclick="guardarEdicionClienteCompleta()" class="px-5 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black">Guardar Todo el Expediente</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RENOVAR PLAN PERSONALIZADO -->
+    <div id="modal-renovar-plan" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white"><i class="fa-solid fa-rotate-right text-cyan-400"></i> Renovación Personalizada de Plan</h3>
+                <button onclick="cerrarModalRenovacion()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <input type="hidden" id="renov-cliente-id">
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Seleccionar Plan</label>
+                    <select id="renov-select-plan" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold outline-none"></select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Fecha de Pago / Inicio</label>
+                    <input type="date" id="renov-fecha" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Monto Cobrado ($)</label>
+                    <input type="number" id="renov-monto" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-emerald-400 font-bold outline-none">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Tipo de Pago</label>
+                    <select id="renov-tipo-pago" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                        <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Débito">Débito</option>
+                        <option value="Crédito">Crédito</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalRenovacion()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button onclick="ejecutarRenovacionPersonalizada()" class="px-5 py-2 rounded-xl bg-cyan-500 text-black text-xs font-black">Confirmar Renovación</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REGISTRAR PAGO (desde el expediente) -->
+    <div id="modal-registrar-pago" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white"><i class="fa-solid fa-cash-register text-emerald-400"></i> Registrar Pago — <span id="pago-exp-nombre" class="text-emerald-400"></span></h3>
+                <button onclick="cerrarModalRegistrarPago()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <input type="hidden" id="pago-exp-cliente-id">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div><label class="block text-slate-400 mb-1">Plan</label><select id="pago-exp-plan" onchange="calcularPagoExpediente()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold outline-none"></select></div>
+                <div><label class="block text-slate-400 mb-1">Fecha del pago</label><input type="date" id="pago-exp-fecha" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Método de pago</label>
+                    <select id="pago-exp-metodo" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none">
+                        <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Débito">Débito</option>
+                        <option value="Crédito">Crédito</option>
+                    </select>
+                </div>
+                <div><label class="block text-slate-400 mb-1">Mes de racha (para descuento)</label><input type="number" id="pago-exp-racha" min="1" max="20" value="1" onchange="calcularPagoExpediente()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-amber-400 font-bold outline-none"></div>
+                <div><label class="block text-slate-400 mb-1">Personas referidas (1 a 4)</label>
+                    <select id="pago-exp-referidos" onchange="calcularPagoExpediente()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-cyan-400 font-bold outline-none">
+                        <option value="0">Ninguna (0)</option>
+                        <option value="1">1 Persona (-$2.000)</option>
+                        <option value="2">2 Personas (-$5.000)</option>
+                        <option value="3">3 Personas (-$10.000)</option>
+                        <option value="4">4 Personas (-$20.000)</option>
+                    </select>
+                </div>
+                <div><label class="block text-slate-400 mb-1">Matrícula (ingreso)</label>
+                    <select id="pago-exp-matricula" onchange="calcularPagoExpediente()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-orange-400 font-bold outline-none">
+                        <option value="0">Sin matrícula</option>
+                        <option value="5000">Matrícula $5.000</option>
+                        <option value="10000">Matrícula $10.000</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="bg-black/60 p-4 rounded-2xl border border-slate-800 text-xs space-y-1">
+                <div class="flex justify-between text-slate-400"><span>Precio base plan:</span><span id="pago-exp-calc-base">$0</span></div>
+                <div class="flex justify-between text-amber-400"><span>Descuento por racha (mes 5, 10, 15, 20):</span><span id="pago-exp-calc-desc-racha">-$0</span></div>
+                <div class="flex justify-between text-cyan-400"><span>Descuento por referidos (1-4):</span><span id="pago-exp-calc-desc-referidos">-$0</span></div>
+                <div class="flex justify-between text-orange-400"><span>Matrícula (ingreso):</span><span id="pago-exp-calc-matricula">+$0</span></div>
+                <div class="flex justify-between text-white font-black text-sm border-t border-slate-800 pt-1"><span>Total a cobrar:</span><span id="pago-exp-calc-total" class="text-emerald-400">$0</span></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs items-center">
+                <div><label class="block text-slate-400 mb-1">Monto del plan a registrar ($) <span class="text-slate-600">— editable</span></label><input type="number" id="pago-exp-monto" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-emerald-400 font-bold outline-none"></div>
+                <label class="flex items-center gap-2 text-slate-300 bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 mt-1 md:mt-4"><input type="checkbox" id="pago-exp-renovar" class="accent-cyan-500"> Renovar membresía (extiende vencimiento y fija la racha)</label>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalRegistrarPago()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button onclick="registrarPagoExpediente()" class="px-5 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black">Registrar pago</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIGURACIÓN MODO TV -->
+    <div id="modal-config-tv" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white"><i class="fa-solid fa-tv text-amber-400"></i> Categorías en Modo TV</h3>
+                <button onclick="cerrarConfiguracionTV()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-[11px] text-slate-500">Marca qué tops aparecen en la TV y para qué género (H = Hombres, M = Mujeres). Los rankings muestran el Top 7.</p>
+            <div class="space-y-2 text-xs">
+                <div class="flex items-center justify-between text-[10px] text-slate-500 uppercase font-bold border-b border-slate-800 pb-1">
+                    <span>Categoría de fuerza (PR)</span>
+                    <span class="flex items-center gap-3"><span class="w-6 text-center">H</span><span class="w-6 text-center">M</span></span>
+                </div>
+                <div class="flex items-center justify-between gap-2"><span>🏋️ Press Banca</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-banca-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-banca-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>💪 Fondos</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-fondos-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-fondos-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>🦵 Sentadilla</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-sentadilla-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-sentadilla-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>🍑 Hip Thrust</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-hipthrust-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-hipthrust-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>💪 Bíceps (kg)</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-biceps-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-biceps-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>🤸 Flexiones (reps)</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-flexiones-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-flexiones-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="flex items-center justify-between gap-2"><span>🧗 Dominadas (reps)</span><span class="flex items-center gap-3"><input type="checkbox" id="tv-cat-dominadas-h" checked class="tv-config-chk accent-sky-500 w-6"><input type="checkbox" id="tv-cat-dominadas-m" checked class="tv-config-chk accent-pink-500 w-6"></span></div>
+                <div class="border-t border-slate-800 my-1"></div>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tv-cat-rachas" checked class="tv-config-chk accent-emerald-500"> 🔥 Rachas de Pagos (Meses)</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tv-cat-asistencias" checked class="tv-config-chk accent-emerald-500"> 📅 Asistencias del Mes (Finalistas Ruleta)</label>
+                <div class="border-t border-slate-800 my-1"></div>
+                <p class="text-[10px] text-slate-500 uppercase font-bold">Visualización</p>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tv-carrusel" checked class="tv-config-chk accent-amber-500"> 🎠 Modo carrusel (rota páginas de 2 cada 9s)</label>
+            </div>
+
+            <!-- Snacks -->
+            <div class="border border-slate-800 rounded-2xl p-3 space-y-2">
+                <label class="flex items-center gap-2 text-xs font-bold text-white"><input type="checkbox" id="tv-cat-snacks" checked class="tv-config-chk accent-emerald-500"> 🍫 Snacks (mostrar panel en TV)</label>
+                <p class="text-[10px] text-slate-500">Marca los sabores que están EN STOCK (los desmarcados no aparecen en la TV):</p>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Mismiblack" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Mismiblack</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Barrimani" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Barrimani</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Bizcocho" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Bizcocho</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Blackballs" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Blackballs</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Helados" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Helados</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Alfajores" checked class="tv-config-chk tv-snack-chk accent-amber-500"> Alfajores</label>
+                </div>
+            </div>
+
+            <!-- Frappes -->
+            <div class="border border-slate-800 rounded-2xl p-3 space-y-2">
+                <label class="flex items-center gap-2 text-xs font-bold text-white"><input type="checkbox" id="tv-cat-frappes" checked class="tv-config-chk accent-emerald-500"> 🥤 Frappes (mostrar panel en TV)</label>
+                <p class="text-[10px] text-slate-500">Marca los sabores EN STOCK. Todos van con o sin café.</p>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Chocolate" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Chocolate</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Javo chips" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Javo chips</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Chocolate Almendra" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Chocolate Almendra</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Chocolate blanco" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Chocolate blanco</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Cookies and cream" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Cookies and cream</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Caramelo frappe" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Caramelo frappe</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Caramel chip frappe" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Caramel chip frappe</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Caramel sin azúcar" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Caramel sin azúcar</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Vainilla frappe" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Vainilla frappe</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Vainilla sin azúcar" checked class="tv-config-chk tv-frappe-chk accent-cyan-500"> Vainilla sin azúcar</label>
+                </div>
+            </div>
+
+            <!-- Agua -->
+            <div class="border border-slate-800 rounded-2xl p-3 space-y-2">
+                <label class="flex items-center gap-2 text-xs font-bold text-white"><input type="checkbox" id="tv-cat-agua" checked class="tv-config-chk accent-emerald-500"> 💧 Agua (mostrar panel en TV)</label>
+                <p class="text-[10px] text-slate-500">Marca lo que está EN STOCK:</p>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Sin gas" checked class="tv-config-chk tv-agua-chk accent-sky-500"> Sin gas</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Con gas" checked class="tv-config-chk tv-agua-chk accent-sky-500"> Con gas</label>
+                </div>
+            </div>
+
+            <!-- Monster -->
+            <div class="border border-slate-800 rounded-2xl p-3 space-y-2">
+                <label class="flex items-center gap-2 text-xs font-bold text-white"><input type="checkbox" id="tv-cat-monster" checked class="tv-config-chk accent-emerald-500"> 👹 Monster (mostrar panel en TV)</label>
+                <p class="text-[10px] text-slate-500">Marca lo que está EN STOCK:</p>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Monster Zero" checked class="tv-config-chk tv-monster-chk accent-lime-500"> Monster Zero</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Monster" checked class="tv-config-chk tv-monster-chk accent-lime-500"> Monster</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Monster Blanca" checked class="tv-config-chk tv-monster-chk accent-lime-500"> Monster Blanca</label>
+                </div>
+            </div>
+
+            <!-- Power -->
+            <div class="border border-slate-800 rounded-2xl p-3 space-y-2">
+                <label class="flex items-center gap-2 text-xs font-bold text-white"><input type="checkbox" id="tv-cat-power" checked class="tv-config-chk accent-emerald-500"> ⚡ Power (mostrar panel en TV)</label>
+                <p class="text-[10px] text-slate-500">Marca lo que está EN STOCK:</p>
+                <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-300">
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Power" checked class="tv-config-chk tv-power-chk accent-rose-500"> Power</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" data-nombre="Power Zero" checked class="tv-config-chk tv-power-chk accent-rose-500"> Power Zero</label>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="guardarConfigTV()" class="px-5 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black">Guardar Ajustes TV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CREAR / EDITAR STAFF -->
+    <div id="modal-staff" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white" id="modal-staff-titulo"><i class="fa-solid fa-user-shield text-rose-400"></i> Agregar Staff</h3>
+                <button onclick="cerrarModalStaff()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <input type="hidden" id="staff-id">
+            <div class="space-y-3 text-xs">
+                <div><label class="block text-slate-400 mb-1">Nombre</label><input type="text" id="staff-nombre" placeholder="Ej. Javier Torres" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white outline-none"></div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Cargo / Rol</label>
+                    <select id="staff-rol" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white font-bold outline-none">
+                        <option>Super Admin</option>
+                        <option>Administrador</option>
+                        <option>Entrenador</option>
+                        <option>Recepción</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">Permisos</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 bg-black border border-slate-800 rounded-xl p-2"><input type="checkbox" class="staff-permiso accent-rose-500" value="Clientes"> Clientes</label>
+                        <label class="flex items-center gap-2 bg-black border border-slate-800 rounded-xl p-2"><input type="checkbox" class="staff-permiso accent-rose-500" value="Pagos"> Pagos</label>
+                        <label class="flex items-center gap-2 bg-black border border-slate-800 rounded-xl p-2"><input type="checkbox" class="staff-permiso accent-rose-500" value="Asistencias"> Asistencias</label>
+                        <label class="flex items-center gap-2 bg-black border border-slate-800 rounded-xl p-2"><input type="checkbox" class="staff-permiso accent-rose-500" value="Finanzas"> Finanzas</label>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-500">Nota: esto registra al staff en la lista. Para que pueda <b>iniciar sesión</b>, crea también su usuario en Supabase → Authentication → Users con su correo.</p>
+            </div>
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalStaff()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button onclick="guardarStaff()" class="px-5 py-2 rounded-xl bg-rose-500 text-white text-xs font-black">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL MODO TV LEADERBOARD -->
+    <div id="modal-tv" class="fixed inset-0 bg-black z-50 flex flex-col p-3 md:p-5 hidden">
+        <div class="flex justify-between items-center border-b border-slate-800 pb-2 md:pb-3 mb-3 md:mb-5">
+            <h1 class="text-lg md:text-2xl font-black text-white tracking-wide flex items-center gap-2"><i class="fa-solid fa-tv text-amber-500"></i> JAVOFIT LEADERBOARD TV</h1>
+            <button onclick="cerrarModoTV()" class="bg-slate-800 text-slate-400 hover:text-white text-xs font-bold px-4 py-2 rounded-xl">Cerrar</button>
+        </div>
+        <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 items-center content-center" id="tv-leaderboard-container"></div>
+    </div>
+
+    <!-- MODAL IMPORTAR CLIENTES DESDE CSV -->
+    <div id="modal-importar-csv" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-3xl p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="text-base font-bold text-white"><i class="fa-solid fa-file-import text-cyan-400"></i> Importar clientes desde CSV</h3>
+                <button onclick="cerrarModalImportarCSV()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="bg-black/40 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+                <p class="text-slate-300 font-bold">Cómo cargar tus ~400 clientes de una vez:</p>
+                <p>1. Descarga la plantilla, ábrela en Excel / Google Sheets y llena una fila por cliente.</p>
+                <p>2. Guarda el archivo como <span class="text-cyan-400 font-bold">CSV</span> y súbelo aquí.</p>
+                <p>3. Revisa la vista previa y confirma la importación.</p>
+                <p class="text-slate-500">Columnas: <span class="text-slate-300">nombre, apellido, correo, telefono, cumpleanos, plan_id, racha_meses, vence, estado</span>. Solo <span class="text-emerald-400">nombre</span> y <span class="text-emerald-400">apellido</span> son obligatorios. Fechas en formato <span class="text-slate-300">AAAA-MM-DD</span>.</p>
+                <p class="text-slate-500">Planes válidos (columna plan_id): <span id="csv-planes-validos" class="text-amber-400">cargando...</span>. Si dejas <span class="text-slate-300">vence</span> vacío, se calcula solo según el plan.</p>
+                <button onclick="descargarPlantillaCSV()" class="mt-1 bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-2 rounded-xl text-xs border border-slate-700"><i class="fa-solid fa-download text-cyan-400"></i> Descargar plantilla CSV</button>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 text-xs font-bold">Archivo CSV</label>
+                <input type="file" id="csv-file-input" accept=".csv,text/csv" onchange="previsualizarCSV()" class="w-full bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-cyan-500 file:text-black file:font-bold file:text-xs">
+            </div>
+
+            <div id="csv-preview-box" class="hidden space-y-2">
+                <div id="csv-resumen" class="text-xs font-bold"></div>
+                <div class="bg-black/40 border border-slate-800 rounded-2xl overflow-x-auto max-h-52 overflow-y-auto">
+                    <table class="w-full text-left text-[11px]">
+                        <thead class="bg-slate-950 text-slate-500 text-[10px] uppercase font-bold sticky top-0">
+                            <tr>
+                                <th class="p-2">Nombre</th><th class="p-2">Apellido</th><th class="p-2">Correo</th><th class="p-2">Teléfono</th><th class="p-2">Plan</th><th class="p-2">Vence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="csv-preview-body" class="divide-y divide-slate-800/50 text-slate-300"></tbody>
+                    </table>
+                </div>
+                <div id="csv-errores" class="hidden text-rose-400 text-xs bg-rose-500/10 border border-rose-500/20 rounded-xl p-3"></div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-slate-800 pt-3">
+                <button onclick="cerrarModalImportarCSV()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancelar</button>
+                <button id="btn-confirmar-import" onclick="confirmarImportacionCSV()" disabled class="px-5 py-2 rounded-xl bg-cyan-500 text-black text-xs font-black disabled:opacity-40 disabled:cursor-not-allowed"><i class="fa-solid fa-cloud-arrow-up"></i> Importar clientes</button>
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- /#app-shell -->
+
+    <!-- Configuración y lógica -->
+    <script src="js/config.js"></script>
+    <script src="js/supabaseClient.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

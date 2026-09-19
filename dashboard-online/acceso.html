@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gimnasio Demo · Control de Acceso</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body { background:#000; font-family: ui-sans-serif, system-ui, sans-serif; }
+        #reader { width:100%; border-radius:1rem; overflow:hidden; }
+        #reader video { border-radius:1rem; }
+        select { color-scheme: dark; }
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen">
+
+    <!-- Barra de navegación de la DEMO (saltar entre las 3 vistas) -->
+    <div class="w-full bg-slate-900 border-b border-slate-800 text-center text-[10px] py-1.5 text-slate-400">
+        <span class="text-amber-400 font-bold">DEMO</span> ·
+        <a href="index.html" class="text-cyan-400 font-semibold hover:underline">Dashboard</a> ·
+        <a href="portal.html" class="text-slate-200 font-semibold hover:underline">Portal</a> ·
+        <span class="text-white font-semibold">Control de acceso</span>
+    </div>
+
+    <div class="max-w-4xl mx-auto min-h-screen flex flex-col">
+
+        <!-- Header -->
+        <header class="px-5 py-4 flex items-center justify-between border-b border-slate-900">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center">
+                    <i class="fa-solid fa-dumbbell text-white"></i>
+                </div>
+                <div>
+                    <p class="text-lg font-black text-white leading-none">Gimnasio Demo</p>
+                    <p class="text-[11px] text-slate-400 font-semibold">Control de Acceso</p>
+                </div>
+            </div>
+            <span class="bg-amber-500/15 text-amber-400 border border-amber-500/40 text-[10px] font-black tracking-wider px-2 py-1 rounded-lg">🧪 MODO DEMO</span>
+        </header>
+
+        <main class="flex-1 p-5 space-y-6">
+
+            <!-- Pantalla de estado (verde/rojo) -->
+            <div id="pantalla" class="rounded-3xl border-4 border-slate-800 bg-slate-950 p-8 md:p-12 text-center"></div>
+
+            <div class="grid md:grid-cols-2 gap-5">
+                <!-- Cámara -->
+                <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-3">
+                    <h3 class="font-black text-white flex items-center gap-2"><i class="fa-solid fa-camera text-cyan-400"></i> Escanear con cámara</h3>
+                    <div id="reader" class="bg-black min-h-[180px] flex items-center justify-center text-slate-600 text-sm">La cámara aparece acá</div>
+                    <button id="btn-cam" onclick="toggleCamara()" class="w-full py-3 rounded-xl font-bold text-sm bg-slate-900 border border-slate-700 text-white hover:border-slate-500 transition">
+                        <i class="fa-solid fa-video"></i> Encender cámara
+                    </button>
+                    <p id="cam-estado" class="text-[11px] text-slate-500 text-center min-h-[16px]"></p>
+                    <p class="text-[10px] text-slate-600 text-center">Requiere permiso de cámara (funciona en el celular o notebook con https/localhost).</p>
+                </div>
+
+                <!-- Simular (demo) -->
+                <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-3">
+                    <h3 class="font-black text-white flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> Simular escaneo (demo)</h3>
+                    <p class="text-[11px] text-slate-400">Elegí un socio y validá su QR del día sin cámara. Probá uno <b class="text-emerald-400">activo</b> y uno <b class="text-rose-400">vencido</b>.</p>
+                    <select id="sim-socio" class="w-full bg-black border border-slate-800 rounded-xl p-3 text-white text-sm"></select>
+                    <button onclick="simularEscaneo()" class="w-full py-3 rounded-xl font-black text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-black">
+                        <i class="fa-solid fa-qrcode"></i> Validar acceso
+                    </button>
+                    <div class="pt-2 border-t border-slate-900">
+                        <label class="text-[11px] text-slate-500 font-semibold block mb-1">…o pegá el contenido de un QR</label>
+                        <div class="flex gap-2">
+                            <input id="sim-pegar" type="text" placeholder="Contenido del QR" class="flex-1 bg-black border border-slate-800 rounded-xl p-2.5 text-white text-xs">
+                            <button onclick="validarPegado()" class="px-4 rounded-xl font-bold text-xs bg-slate-800 text-white hover:bg-slate-700">Validar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-center text-[11px] text-slate-600">
+                El acceso se concede solo si el QR es <b>de hoy</b> y el <b>plan está vigente</b>. Vencidos y congelados: denegado.
+            </p>
+        </main>
+    </div>
+
+    <script src="js/demo-data.js"></script>
+    <script src="js/api-demo.js"></script>
+    <script src="js/acceso-demo.js"></script>
+    <script src="js/control-acceso.js"></script>
+</body>
+</html>
